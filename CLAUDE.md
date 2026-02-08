@@ -16,16 +16,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build Commands
 
+### Linux
+
 ```bash
+# Development (recommended - uses run.sh script)
+./run.sh                            # Sets GDK_BACKEND=x11 automatically
+
+# Or manually set environment variable
+GDK_BACKEND=x11 npm run tauri dev
+
+# Build Rust backend only
+cd src-tauri && cargo build
+
+# Start frontend dev server only
+npm run dev
+
+# Production build
+npm run tauri build
+# Output: src-tauri/target/release/bundle/
+#   - .deb (Debian/Ubuntu)
+#   - .AppImage (universal)
+#   - .rpm (Fedora/RHEL)
+```
+
+> **Note**: `GDK_BACKEND=x11` fixes GTK/WebKit rendering issues on Wayland compositors. Tauri uses WebKitGTK on Linux which may have compatibility problems with some Wayland environments.
+
+### Windows
+
+```powershell
 # Development
-cd src-tauri && cargo build        # Build Rust backend
-npm run dev                         # Start frontend dev server
-npm run tauri dev                   # Run full Tauri app
+npm run tauri dev
 
-# Production
-npm run tauri build                 # Build release
+# Production build
+npm run tauri build
+# Output: src-tauri\target\release\bundle\
+#   - .msi (installer)
+#   - .exe (NSIS installer)
+```
 
-# Testing
+### Testing
+
+```bash
 cargo test                          # Rust tests
 npm test                            # Frontend tests
 ```
