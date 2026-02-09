@@ -2,7 +2,7 @@ import * as Slider from "@radix-ui/react-slider";
 import { useThemeStore, ThemeMode } from "../stores/themeStore";
 
 export function ThemeControls() {
-  const { mode, opacity, blur, setMode, setOpacity, setBlur } = useThemeStore();
+  const { mode, opacity, blur, blockMode, setMode, setOpacity, setBlur, setBlockMode } = useThemeStore();
 
   const modes: { value: ThemeMode; label: string }[] = [
     { value: "glass", label: "Glass" },
@@ -66,6 +66,26 @@ export function ThemeControls() {
           </Slider.Track>
           <Slider.Thumb className="slider-thumb" aria-label="Blur" />
         </Slider.Root>
+      </div>
+
+      {/* Block Mode Toggle */}
+      <div className="theme-control-group">
+        <label className="theme-control-label">Terminal Mode</label>
+        <div className="block-mode-toggle">
+          <span
+            className={`toggle-switch ${blockMode ? "active" : ""}`}
+            onClick={() => setBlockMode(!blockMode)}
+            role="switch"
+            aria-checked={blockMode}
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                setBlockMode(!blockMode);
+              }
+            }}
+          />
+          <label>{blockMode ? "Block Mode" : "Raw Mode"}</label>
+        </div>
       </div>
     </div>
   );

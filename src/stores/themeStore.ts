@@ -9,6 +9,7 @@ export interface ThemeState {
   blur: number;
   fontFamily: string;
   backgroundImage: string | null;
+  blockMode: boolean;
 
   // Actions
   setMode: (mode: ThemeMode) => void;
@@ -16,6 +17,7 @@ export interface ThemeState {
   setBlur: (blur: number) => void;
   setFontFamily: (fontFamily: string) => void;
   setBackgroundImage: (url: string | null) => void;
+  setBlockMode: (enabled: boolean) => void;
 }
 
 export const useThemeStore = create<ThemeState>()(
@@ -26,12 +28,14 @@ export const useThemeStore = create<ThemeState>()(
       blur: 12,
       fontFamily: "JetBrains Mono, Consolas, monospace",
       backgroundImage: null,
+      blockMode: true,
 
       setMode: (mode) => set({ mode }),
       setOpacity: (opacity) => set({ opacity: Math.max(0, Math.min(1, opacity)) }),
       setBlur: (blur) => set({ blur: Math.max(0, Math.min(50, blur)) }),
       setFontFamily: (fontFamily) => set({ fontFamily }),
       setBackgroundImage: (backgroundImage) => set({ backgroundImage }),
+      setBlockMode: (blockMode) => set({ blockMode }),
     }),
     {
       name: "bspt-theme",

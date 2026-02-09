@@ -95,3 +95,17 @@ export interface SessionConfig {
   cols: number;
   rows: number;
 }
+
+// Block-based terminal types
+export type BlockStatus = "running" | "success" | "error";
+
+export interface Block {
+  id: string;
+  sessionId: string;
+  command: string;
+  timestamp: Date;
+  status: BlockStatus;
+  output: string;
+  collapsed: boolean;
+  lineCount: number;
+}

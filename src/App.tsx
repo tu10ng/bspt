@@ -2,13 +2,13 @@ import "./App.css";
 import { useThemeStore } from "./stores/themeStore";
 import { useSessionTreeStore } from "./stores/sessionTreeStore";
 import { ThemeControls } from "./components/ThemeControls";
-import { TerminalView } from "./components/Terminal";
+import { TerminalView, BlockTerminal } from "./components/Terminal";
 import { SessionTree } from "./components/Sidebar";
 import { useState } from "react";
 import { Protocol } from "./types/session";
 
 function App() {
-  const { opacity, blur } = useThemeStore();
+  const { opacity, blur, blockMode } = useThemeStore();
   const {
     activeSessionId,
     activeNodeId,
@@ -140,7 +140,11 @@ function App() {
       {/* Terminal - Main Content Area */}
       <main className="terminal">
         {activeSessionId ? (
-          <TerminalView sessionId={activeSessionId} />
+          blockMode ? (
+            <BlockTerminal sessionId={activeSessionId} />
+          ) : (
+            <TerminalView sessionId={activeSessionId} />
+          )
         ) : (
           <div className="terminal-placeholder">
             Connect to a server to start a session
