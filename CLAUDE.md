@@ -23,16 +23,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./run.sh                            # Sets GDK_BACKEND=x11 automatically
 
 # Or manually set environment variable
-GDK_BACKEND=x11 npm run tauri dev
+GDK_BACKEND=x11 pnpm tauri dev
 
 # Build Rust backend only
 cd src-tauri && cargo build
 
 # Start frontend dev server only
-npm run dev
+pnpm dev
 
 # Production build
-npm run tauri build
+pnpm tauri build
 # Output: src-tauri/target/release/bundle/
 #   - .deb (Debian/Ubuntu)
 #   - .AppImage (universal)
@@ -45,10 +45,10 @@ npm run tauri build
 
 ```powershell
 # Development
-npm run tauri dev
+pnpm tauri dev
 
 # Production build
-npm run tauri build
+pnpm tauri build
 # Output: src-tauri\target\release\bundle\
 #   - .msi (installer)
 #   - .exe (NSIS installer)
@@ -58,8 +58,21 @@ npm run tauri build
 
 ```bash
 cargo test                          # Rust tests
-npm test                            # Frontend tests
+pnpm test                           # Frontend tests
 ```
+
+### CI/CD
+
+GitHub Actions 自动构建，推送 tag 时触发：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+构建产物自动上传到 GitHub Releases (草稿状态)：
+- **Linux**: `.deb`, `.AppImage`, `.rpm`
+- **Windows**: `.msi`, `.exe`
 
 ## Architecture
 
@@ -92,6 +105,9 @@ Tree structure: Router (Mgmt IP) → Boards (Linux IPs). Support Telnet/SSH prot
 
 ```
 bspt/
+├── .github/
+│   └── workflows/
+│       └── build.yml        # CI/CD multi-platform build
 ├── src-tauri/
 │   └── src/
 │       ├── main.rs          # Tauri entry
