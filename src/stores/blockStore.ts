@@ -3,6 +3,14 @@ import { persist } from "zustand/middleware";
 import { BlockMarker, BlockStatus } from "../types/session";
 import { v4 as uuidv4 } from "uuid";
 
+// Suggestion algorithm configuration
+export type SuggestionSortBy = "recent" | "frequency" | "combined";
+
+export interface SuggestionConfig {
+  sortBy: SuggestionSortBy;
+  maxSuggestions: number;
+}
+
 interface MarkerState {
   // Markers per session
   markers: Record<string, BlockMarker[]>;
@@ -10,6 +18,10 @@ interface MarkerState {
   maxMarkersPerSession: number;
   // Active marker for Outline synchronization
   activeMarkerId: string | null;
+  // Command frequency statistics (sessionId -> command -> count)
+  commandFrequency: Record<string, Record<string, number>>;
+  // Suggestion algorithm configuration
+  suggestionConfig: SuggestionConfig;
 
   // Actions
   createMarker: (
@@ -32,6 +44,9 @@ interface MarkerState {
   findMarkerByLine: (sessionId: string, line: number) => BlockMarker | undefined;
   // Expand blocks that contain a specific line (for search auto-expand)
   expandBlocksContainingLine: (sessionId: string, line: number) => void;
+  // Suggestion config actions
+  setSuggestionSortBy: (sortBy: SuggestionSortBy) => void;
+  setMaxSuggestions: (max: number) => void;
 }
 
 export const useBlockStore = create<MarkerState>()(
@@ -40,6 +55,11 @@ export const useBlockStore = create<MarkerState>()(
       markers: {},
       maxMarkersPerSession: 500,
       activeMarkerId: null,
+      commandFrequency: {},
+      suggestionConfig: {
+        sortBy: "recent",
+        maxSuggestions: 50,
+      },
 
       createMarker: (sessionId: string, command: string, startLine: number) => {
         const markerId = uuidv4();
@@ -63,11 +83,26 @@ export const useBlockStore = create<MarkerState>()(
             newMarkers = newMarkers.slice(-state.maxMarkersPerSession);
           }
 
+          // Update command frequency
+          const trimmedCmd = command.trim();
+          let newFrequency = state.commandFrequency;
+          if (trimmedCmd) {
+            const sessionFreq = state.commandFrequency[sessionId] || {};
+            newFrequency = {
+              ...state.commandFrequency,
+              [sessionId]: {
+                ...sessionFreq,
+                [trimmedCmd]: (sessionFreq[trimmedCmd] || 0) + 1,
+              },
+            };
+          }
+
           return {
             markers: {
               ...state.markers,
               [sessionId]: newMarkers,
             },
+            commandFrequency: newFrequency,
           };
         });
 
@@ -177,7 +212,13 @@ export const useBlockStore = create<MarkerState>()(
         set((state) => {
           const newMarkers = { ...state.markers };
           delete newMarkers[sessionId];
-          return { markers: newMarkers, activeMarkerId: null };
+          const newFrequency = { ...state.commandFrequency };
+          delete newFrequency[sessionId];
+          return {
+            markers: newMarkers,
+            commandFrequency: newFrequency,
+            activeMarkerId: null,
+          };
         });
       },
 
@@ -199,10 +240,53 @@ export const useBlockStore = create<MarkerState>()(
       },
 
       getCommandHistory: (sessionId: string) => {
-        const markers = get().markers[sessionId] || [];
-        return markers
-          .map((m) => m.command)
-          .filter((cmd) => cmd.trim().length > 0);
+        const state = get();
+        const markers = state.markers[sessionId] || [];
+        const frequency = state.commandFrequency[sessionId] || {};
+        const config = state.suggestionConfig;
+
+        // 1. Deduplicate: use Map to keep only the most recent occurrence of each command
+        // Iterate in reverse so the first occurrence in the Map is the most recent
+        const commandMap = new Map<string, { command: string; timestamp: Date }>();
+
+        for (let i = markers.length - 1; i >= 0; i--) {
+          const m = markers[i];
+          const cmd = m.command.trim();
+          if (cmd && !commandMap.has(cmd)) {
+            commandMap.set(cmd, { command: cmd, timestamp: m.timestamp });
+          }
+        }
+
+        // 2. Convert to array and sort based on configuration
+        let commands = Array.from(commandMap.values());
+
+        switch (config.sortBy) {
+          case "recent":
+            // Already in most-recent-first order from reverse iteration
+            break;
+          case "frequency":
+            commands.sort(
+              (a, b) => (frequency[b.command] || 0) - (frequency[a.command] || 0)
+            );
+            break;
+          case "combined":
+            // Combined score: recency decay + frequency weight
+            const now = Date.now();
+            commands.sort((a, b) => {
+              // Recency factor: exponential decay over hours
+              const recencyA =
+                1 / (1 + (now - a.timestamp.getTime()) / 3600000);
+              const recencyB =
+                1 / (1 + (now - b.timestamp.getTime()) / 3600000);
+              const freqA = frequency[a.command] || 1;
+              const freqB = frequency[b.command] || 1;
+              // Higher score = more relevant
+              return recencyB * freqB - recencyA * freqA;
+            });
+            break;
+        }
+
+        return commands.slice(0, config.maxSuggestions).map((c) => c.command);
       },
 
       findMarkerByLine: (sessionId: string, line: number) => {
@@ -247,6 +331,21 @@ export const useBlockStore = create<MarkerState>()(
             },
           };
         });
+      },
+
+      setSuggestionSortBy: (sortBy: SuggestionSortBy) => {
+        set((state) => ({
+          suggestionConfig: { ...state.suggestionConfig, sortBy },
+        }));
+      },
+
+      setMaxSuggestions: (max: number) => {
+        set((state) => ({
+          suggestionConfig: {
+            ...state.suggestionConfig,
+            maxSuggestions: Math.max(1, max),
+          },
+        }));
       },
     }),
     {

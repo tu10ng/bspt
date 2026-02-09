@@ -362,119 +362,126 @@ Detailed implementation guide for BSPT (Board Support Package Terminal).
 
 ---
 
-## Phase 4: Block-Based Terminal
+## Phase 4: Block-Based Terminal (IN PROGRESS)
 
 ### Goals
-- Implement collapsible output blocks
+- ~~Implement collapsible output blocks~~ → **Overlay-based visual hiding** (see Design Decision below)
 - Add command input overlay
 - Implement RingBuffer for backpressure
 - Add Fish-like autocomplete
 
+### Design Decision: Overlay Approach vs True Collapsible Blocks
+
+**Problem**: xterm.js does not support true collapsible blocks. The terminal buffer is a linear character stream - there's no way to "hide" lines while preserving selection, search, and scroll behavior.
+
+**Solution**: Use **transparent overlay masking**. The xterm.js buffer remains unchanged; we render opaque overlay divs on top of collapsed content regions. This approach:
+
+- **Preserves data integrity**: Ctrl+A selects all text including hidden content
+- **Search works**: Find functionality searches hidden content
+- **Performance**: Single xterm.js instance, no DOM manipulation of block elements
+- **Copy/paste**: Full content available even when visually hidden
+- **Scroll sync**: Gutter overlay tracks terminal scroll position
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│ UnifiedTerminal (container, position: relative)     │
+│  ┌───────────────────────────────────────────────┐  │
+│  │ xterm.js canvas (full size, z-index: 1)       │  │
+│  │   - Renders all terminal content              │  │
+│  │   - Buffer never modified                     │  │
+│  └───────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────┐  │
+│  │ GutterOverlay (absolute, z-index: 10)         │  │
+│  │   - Fold icons (▶/▼)                          │  │
+│  │   - Status colors (running/success/error)     │  │
+│  │   - Synced with terminal scroll               │  │
+│  └───────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────┐  │
+│  │ CollapsedRangeOverlay[] (absolute, z-index: 5)│  │
+│  │   - Opaque divs covering hidden line ranges   │  │
+│  │   - Shows "... (N lines hidden) ..." summary  │  │
+│  └───────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────┘
+```
+
+### Implemented Components
+
+1. **UnifiedTerminal.tsx** (main terminal component)
+   - Renders xterm.js at full size
+   - Manages block markers via blockStore
+   - Renders collapsed-range-overlay divs for hidden content
+   - Handles keyboard shortcuts (Ctrl+Shift+[/], Ctrl+L, Ctrl+F)
+
+2. **GutterOverlay.tsx** (visual markers)
+   - Displays fold icons aligned to terminal lines
+   - Shows status colors per block
+   - Uses `transform: translateY(-${scrollTop}px)` for scroll sync
+
+3. **blockStore.ts** (Zustand state)
+   ```typescript
+   interface BlockMarker {
+     id: string;
+     startLine: number;      // command line in buffer
+     endLine: number | null; // null while running
+     collapsed: boolean;
+     status: 'running' | 'success' | 'error';
+   }
+   ```
+
+4. **useCollapsedRanges.ts** (collapsed range calculation)
+   - Returns `{ startLine, endLine, hiddenCount }[]` for overlay positioning
+
+5. **useGutterSync.ts** (scroll synchronization)
+   - Tracks scroll position, cell dimensions, viewport rows
+   - Listens to terminal `onScroll()`, `onResize()`, `onRender()` events
+
+6. **blockDetector.ts** (command detection)
+   - Creates markers when commands are detected (prompt patterns)
+   - Completes markers when output ends (next prompt detected)
+
 ### Tasks
 
-1. **Create Block Component**
+1. **[DONE] Overlay-based block system**
+   - UnifiedTerminal with overlay masking
+   - GutterOverlay with fold icons
+   - CollapsedRangeOverlay for hidden content
+   - Block detection and marker tracking
 
-   Create `src/components/Terminal/Block.tsx`:
-   ```typescript
-   interface BlockProps {
-     command: string;
-     timestamp: Date;
-     status: 'success' | 'error' | 'running';
-     output: string;
-     collapsed: boolean;
-     onToggle: () => void;
-   }
+2. **[DONE] Block state management**
+   - blockStore with Zustand
+   - toggleCollapse(), collapseAll(), expandAll()
+   - Persist to localStorage
 
-   export function Block({ command, timestamp, status, output, collapsed, onToggle }: BlockProps) {
-     return (
-       <div className="block">
-         <div className="block-header" onClick={onToggle}>
-           <span className={`gutter gutter-${status}`} />
-           <span className="command">{command}</span>
-           <span className="timestamp">{timestamp.toLocaleTimeString()}</span>
-           <span className="chevron">{collapsed ? '▶' : '▼'}</span>
-         </div>
-         {!collapsed && (
-           <div className="block-body">
-             <pre>{output}</pre>
-           </div>
-         )}
-       </div>
-     );
-   }
-   ```
+3. **[DONE] Keyboard shortcuts**
+   - Ctrl+Shift+[ / ] : Toggle current block
+   - Ctrl+L : Collapse all
+   - Ctrl+F : Search (auto-expand on match)
 
-2. **Implement RingBuffer in Rust**
+4. **[DONE] Context menu**
+   - Copy Command
+   - Re-run Command
+   - Toggle Collapse
+   - Collapse All / Expand All
 
-   Create `src-tauri/src/buffer.rs`:
-   ```rust
-   pub struct RingBuffer<T> {
-       buffer: Vec<Option<T>>,
-       capacity: usize,
-       head: usize,
-       tail: usize,
-       len: usize,
-   }
+5. **[TODO] Input overlay with autocomplete**
+   - Fish-like command suggestions
+   - History-based completion
 
-   impl<T: Clone> RingBuffer<T> {
-       pub fn new(capacity: usize) -> Self {
-           Self {
-               buffer: vec![None; capacity],
-               capacity,
-               head: 0,
-               tail: 0,
-               len: 0,
-           }
-       }
+6. **[TODO] RingBuffer backpressure**
+   - Rust-side buffer for high-throughput output
 
-       pub fn push(&mut self, item: T) {
-           self.buffer[self.tail] = Some(item);
-           self.tail = (self.tail + 1) % self.capacity;
-           if self.len < self.capacity {
-               self.len += 1;
-           } else {
-               self.head = (self.head + 1) % self.capacity;
-           }
-       }
-   }
-   ```
+### Deprecated Components
 
-3. **Create Input Overlay**
-
-   Create `src/components/Terminal/InputOverlay.tsx`:
-   ```typescript
-   export function InputOverlay({ onSubmit, suggestions }: InputOverlayProps) {
-     const [input, setInput] = useState('');
-     const [showSuggestions, setShowSuggestions] = useState(false);
-
-     return (
-       <div className="input-overlay">
-         <input
-           value={input}
-           onChange={(e) => setInput(e.target.value)}
-           onKeyDown={(e) => {
-             if (e.key === 'Enter') {
-               onSubmit(input);
-               setInput('');
-             }
-           }}
-         />
-         {showSuggestions && suggestions.length > 0 && (
-           <ul className="suggestions">
-             {suggestions.map((s) => <li key={s}>{s}</li>)}
-           </ul>
-         )}
-       </div>
-     );
-   }
-   ```
+- `BlockTerminal.tsx` - Old dual-buffer architecture with React divs + xterm.js. Use UnifiedTerminal instead.
 
 ### Verification
-- [ ] Commands appear as blocks
-- [ ] Blocks collapse/expand on click
-- [ ] Status gutter shows correct color
+- [x] Commands appear as blocks (with gutter markers)
+- [x] Blocks collapse/expand on click (overlay-based)
+- [x] Status gutter shows correct color
 - [ ] Autocomplete shows history suggestions
-- [ ] 100k+ lines don't cause UI freeze
+- [ ] 100k+ lines don't cause UI freeze (needs stress test)
 
 ---
 
@@ -667,6 +674,21 @@ interface Block {
   collapsed: boolean;
 }
 
+// New: Overlay-based block marker (Phase 4 actual implementation)
+interface BlockMarker {
+  id: string;
+  startLine: number;      // command line in xterm buffer
+  endLine: number | null; // null while command is running
+  collapsed: boolean;
+  status: 'running' | 'success' | 'error';
+}
+
+interface CollapsedRange {
+  startLine: number;      // first hidden line
+  endLine: number;        // last hidden line
+  hiddenCount: number;    // total lines hidden
+}
+
 interface TraceEvent {
   file: string;
   line: number;
@@ -719,5 +741,6 @@ while True:
 | 1 | Visual inspection | Glass effect visible, grid responsive | PASS |
 | 2 | SSH/Telnet connection | Real server echo works | PASS |
 | 3 | Tree operations | Add/remove/switch persists, VRP pagination | PASS |
-| 4 | Stress test | 100k lines, no freeze | - |
+| 4 | Block overlay | Collapse/expand works, gutter synced | PASS |
+| 4 | Stress test | 100k lines, no freeze | TODO |
 | 5 | Log matching | Index C project, link works | - |

@@ -1173,3 +1173,14 @@
   font-size: 12px;
   margin-left: 4px;
 }
+
+/* Inline Ghost Text - Fish shell style autocomplete */
+.inline-ghost-text {
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 14px;
+  color: var(--color-text-muted, #666);
+  opacity: 0.5;
+  pointer-events: none;
+  white-space: pre;
+  z-index: 15;
+}

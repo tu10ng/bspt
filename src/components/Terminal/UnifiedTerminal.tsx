@@ -12,6 +12,7 @@ import { useBlockStore } from "../../stores/blockStore";
 import { BlockDetector } from "../../utils/blockDetector";
 import { useGutterSync, getCurrentBufferLine, useCollapsedRanges } from "../../hooks";
 import { GutterOverlay } from "./GutterOverlay";
+import { InlineGhostText } from "./InlineGhostText";
 
 interface UnifiedTerminalProps {
   sessionId: string;
@@ -24,6 +25,7 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const detectorRef = useRef<BlockDetector | null>(null);
+  const ghostTextRef = useRef<string>("");
 
   const { fontFamily } = useThemeStore();
   const {
@@ -35,6 +37,7 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     clearSession,
     getSessionMarkers,
     setActiveMarker,
+    getCommandHistory,
   } = useBlockStore();
 
   const markers = getSessionMarkers(sessionId);
@@ -54,6 +57,16 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     y: number;
     markerId: string;
   } | null>(null);
+
+  // Inline ghost text state (Fish shell style autocomplete)
+  const [ghostText, setGhostText] = useState("");
+  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
+  const [cellDimensions, setCellDimensions] = useState({ width: 0, height: 0 });
+
+  // Keep ghostTextRef in sync with state for use in event handlers
+  useEffect(() => {
+    ghostTextRef.current = ghostText;
+  }, [ghostText]);
 
   const handleResize = useCallback(() => {
     if (!fitAddonRef.current || !terminalRef.current) return;
@@ -289,8 +302,60 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     // Fit terminal to container
     fitAddon.fit();
 
-    // Handle terminal input
+    // Update cell dimensions after fit
+    const updateCellDimensions = () => {
+      // Access internal render dimensions for accurate cell sizing
+      const core = (term as unknown as { _core: {
+        _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } }
+      } })._core;
+      const dims = core?._renderService?.dimensions?.css?.cell;
+      if (dims) {
+        setCellDimensions({ width: dims.width, height: dims.height });
+      }
+    };
+    // Initial update after a short delay to ensure rendering is ready
+    setTimeout(updateCellDimensions, 100);
+
+    // Helper to extract current input from prompt line
+    const extractPromptInput = (lineText: string): string => {
+      // Match common prompt endings: $, #, >, ], followed by optional space and input
+      const promptMatch = lineText.match(/[$#>\]]\s*(.*)$/);
+      return promptMatch?.[1] || "";
+    };
+
+    // Helper to update ghost text based on current line
+    const updateGhostText = () => {
+      const buffer = term.buffer.active;
+      const line = buffer.getLine(buffer.cursorY + buffer.baseY);
+      const lineText = line?.translateToString(true) || "";
+      const currentInput = extractPromptInput(lineText);
+
+      // Update cursor position (relative to viewport)
+      setCursorPos({ x: buffer.cursorX, y: buffer.cursorY });
+
+      // Match against command history
+      if (currentInput.length > 0) {
+        const history = getCommandHistory(sessionId);
+        const match = history.find(
+          (cmd) => cmd.startsWith(currentInput) && cmd !== currentInput
+        );
+        setGhostText(match ? match.slice(currentInput.length) : "");
+      } else {
+        setGhostText("");
+      }
+    };
+
+    // Handle terminal input with Tab key interception
     const inputDisposable = term.onData((data) => {
+      // Tab key - accept ghost text suggestion
+      if (data === "\t" && ghostTextRef.current) {
+        const encoder = new TextEncoder();
+        const bytes = Array.from(encoder.encode(ghostTextRef.current));
+        invoke("send_input", { sessionId, data: bytes }).catch(console.error);
+        setGhostText("");
+        return; // Don't send Tab to backend
+      }
+
       // Update detector state for block detection
       detector.processInput(data);
 
@@ -301,6 +366,16 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
         sessionId,
         data: bytes,
       }).catch(console.error);
+
+      // Clear ghost text on Enter (command submitted)
+      if (data === "\r" || data === "\n") {
+        setGhostText("");
+      }
+    });
+
+    // Track cursor movement to update ghost text
+    const cursorDisposable = term.onCursorMove(() => {
+      updateGhostText();
     });
 
     // Listen for data from backend
@@ -318,6 +393,9 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
           // This ensures the buffer is updated before getCurrentLine() is called
           term.write(bytes, () => {
             detector.processOutput(text);
+            // Update ghost text after output is written
+            updateGhostText();
+            updateCellDimensions();
           });
         }
       );
@@ -347,6 +425,7 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     // Cleanup
     return () => {
       inputDisposable.dispose();
+      cursorDisposable.dispose();
       resizeObserver.disconnect();
       unlistenData?.();
       unlistenState?.();
@@ -359,6 +438,7 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     handleResize,
     createMarker,
     completeMarker,
+    getCommandHistory,
   ]);
 
   // Context menu actions
@@ -465,6 +545,16 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
           }}
         />
       ))}
+
+      {/* Inline Ghost Text - Fish shell style autocomplete */}
+      <InlineGhostText
+        text={ghostText}
+        cursorX={cursorPos.x}
+        cursorY={cursorPos.y}
+        cellWidth={cellDimensions.width}
+        cellHeight={cellDimensions.height}
+        visible={ghostText.length > 0}
+      />
 
       {/* Context Menu */}
       {contextMenu && (
