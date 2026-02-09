@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -10,6 +10,7 @@ import { useThemeStore } from "../../stores/themeStore";
 import { useBlockStore } from "../../stores/blockStore";
 import { BlockDetector } from "../../utils/blockDetector";
 import { BlockList } from "./Block";
+import { InputOverlay } from "./InputOverlay";
 
 interface BlockTerminalProps {
   sessionId: string;
@@ -30,9 +31,15 @@ export function BlockTerminal({ sessionId }: BlockTerminalProps) {
     completeBlock,
     toggleCollapse,
     getSessionBlocks,
+    getCommandHistory,
   } = useBlockStore();
 
   const blocks = getSessionBlocks(sessionId);
+  const commandHistory = getCommandHistory(sessionId);
+
+  // InputOverlay state
+  const [overlayVisible, setOverlayVisible] = useState(false);
+  const [overlayInput, setOverlayInput] = useState("");
 
   // Scroll to bottom when new blocks are added
   useEffect(() => {
@@ -59,6 +66,40 @@ export function BlockTerminal({ sessionId }: BlockTerminalProps) {
       toggleCollapse(blockId);
     },
     [toggleCollapse]
+  );
+
+  // Ctrl+Space toggle for InputOverlay
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.code === "Space") {
+        e.preventDefault();
+        setOverlayVisible((v) => !v);
+        if (!overlayVisible) {
+          setOverlayInput("");
+        }
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [overlayVisible]);
+
+  // Handle command submission from InputOverlay
+  const handleOverlaySubmit = useCallback(
+    (command: string) => {
+      // Send command with carriage return
+      const encoder = new TextEncoder();
+      const bytes = Array.from(encoder.encode(command + "\r"));
+      invoke("send_input", { sessionId, data: bytes }).catch(console.error);
+
+      // Process for block detection
+      detectorRef.current?.processInput(command);
+      detectorRef.current?.processInput("\r");
+
+      // Hide overlay
+      setOverlayVisible(false);
+      setOverlayInput("");
+    },
+    [sessionId]
   );
 
   useEffect(() => {
@@ -210,6 +251,15 @@ export function BlockTerminal({ sessionId }: BlockTerminalProps) {
       <div ref={blockListRef} className="block-list-container">
         <BlockList blocks={blocks} onToggle={handleBlockToggle} />
       </div>
+
+      {/* Fish-like command overlay (Ctrl+Space to toggle) */}
+      <InputOverlay
+        history={commandHistory}
+        currentInput={overlayInput}
+        onSubmit={handleOverlaySubmit}
+        onInputChange={setOverlayInput}
+        visible={overlayVisible}
+      />
 
       {/* xterm.js handles all input directly */}
       <div
