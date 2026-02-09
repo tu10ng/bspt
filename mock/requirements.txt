@@ -1,0 +1,2 @@
+# VRP Mock Server Dependencies
+# No external dependencies required - uses only Python stdlib

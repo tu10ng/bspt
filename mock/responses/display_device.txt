@@ -1,0 +1,25 @@
+{hostname}'s Device status:
+Slot  Sub  Type                Online    Power    Register     Status   Role
+-------------------------------------------------------------------------------
+0     -    CE6850-48S4Q-EI     Present   PowerOn  Registered   Normal   Master
+0     1    CEMPU               Present   PowerOn  Registered   Normal   NA
+0     2    CE-L48XS-EF         Present   PowerOn  Registered   Normal   NA
+1     -    CE6850-48S4Q-EI     Present   PowerOn  Registered   Normal   Slave
+1     1    CEMPU               Present   PowerOn  Registered   Normal   NA
+1     2    CE-L48XS-EF         Present   PowerOn  Registered   Normal   NA
+
+Board Information:
+Slot  Sub  BoardName           PhySerial          MAC Address      Description
+-------------------------------------------------------------------------------
+0     -    CE6850-48S4Q-EI     2102310001         00e0-fc01-0001   Main Processing Unit
+0     1    CEMPU               2102310002         -                Main Control Board
+0     2    CE-L48XS-EF         2102310003         -                48-port 10GE SFP+ LPU
+1     -    CE6850-48S4Q-EI     2102310011         00e0-fc01-0011   Main Processing Unit
+1     1    CEMPU               2102310012         -                Main Control Board
+1     2    CE-L48XS-EF         2102310013         -                48-port 10GE SFP+ LPU
+
+Management Ethernet Information:
+Slot  Sub  MEth                IP Address         Status
+-------------------------------------------------------------------------------
+0     -    MEth0/0/1           192.168.1.1/24     Up
+1     -    MEth1/0/1           192.168.1.2/24     Up

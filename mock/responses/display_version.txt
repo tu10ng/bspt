@@ -1,0 +1,26 @@
+Huawei Versatile Routing Platform Software
+VRP (R) software, Version 8.180 (CE6800 V800R021C00SPC100)
+Copyright (C) 2012-2024 Huawei Technologies Co., Ltd.
+HUAWEI CE6850-48S4Q-EI uptime is 45 days, 12 hours, 30 minutes
+Patch Version: V800R021SPH003
+
+CE6850-48S4Q-EI V100R001C00SPC100 version information:
+=======================================================
+BKP  version information:
+  1.PCB         VERSION : CEM48S4QP01    VER.A
+  2.Board       TYPE    : CE6850-48S4Q-EI
+  3.CPLD1       VERSION : 105
+  4.BIOS        VERSION : 386
+
+MPU(Master) 1 : uptime is 45 days, 12 hours, 30 minutes
+  StartupTime 2024/01/01  00:00:00
+  Memory      Size        : 8192    M bytes
+  Flash       Size        : 2048    M bytes
+  NVRAM       Size        : 512     K bytes
+  MPU version information:
+  1.PCB         VERSION : CEMPU01    VER.B
+  2.MAB         VERSION : 1
+  3.Board       TYPE    : CEMPU
+  4.CPLD1       VERSION : 105
+  5.CPLD2       VERSION : 105
+  6.BIOS        VERSION : 433

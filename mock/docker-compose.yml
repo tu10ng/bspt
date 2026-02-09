@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  vrp-mock:
+    build: .
+    ports:
+      - "2323:23"
+    volumes:
+      - ./responses:/app/responses:ro
+    restart: unless-stopped
