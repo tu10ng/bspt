@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { SearchAddon } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
@@ -9,7 +10,7 @@ import "@xterm/xterm/css/xterm.css";
 import { useThemeStore } from "../../stores/themeStore";
 import { useBlockStore } from "../../stores/blockStore";
 import { BlockDetector } from "../../utils/blockDetector";
-import { useGutterSync, getCurrentBufferLine } from "../../hooks/useGutterSync";
+import { useGutterSync, getCurrentBufferLine, useCollapsedRanges } from "../../hooks";
 import { GutterOverlay } from "./GutterOverlay";
 
 interface UnifiedTerminalProps {
@@ -21,6 +22,7 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
   const detectorRef = useRef<BlockDetector | null>(null);
 
   const { fontFamily } = useThemeStore();
@@ -36,6 +38,9 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
   } = useBlockStore();
 
   const markers = getSessionMarkers(sessionId);
+
+  // Calculate collapsed ranges for visual hiding
+  const collapsedRanges = useCollapsedRanges(markers);
 
   // Gutter sync state
   const gutterSync = useGutterSync(terminalRef.current);
@@ -113,6 +118,52 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     setContextMenu(null);
   }, []);
 
+  // Search state for find functionality
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearchBar, setShowSearchBar] = useState(false);
+
+  // Search handler
+  // Note: Auto-expand on search requires getting the match line number,
+  // which xterm SearchAddon doesn't expose directly. For now, we expand
+  // all blocks when searching to ensure the match is visible.
+  const handleSearch = useCallback(
+    (query: string, direction: "next" | "prev" = "next") => {
+      if (!searchAddonRef.current) return false;
+
+      // Expand all blocks when searching to ensure matches are visible
+      // This is a simple approach since SearchAddon doesn't expose match line
+      if (query) {
+        expandAll(sessionId);
+      }
+
+      const result =
+        direction === "next"
+          ? searchAddonRef.current.findNext(query, {
+              decorations: {
+                matchBackground: "#f1fa8c40",
+                matchBorder: "#f1fa8c",
+                matchOverviewRuler: "#f1fa8c",
+                activeMatchBackground: "#50fa7b60",
+                activeMatchBorder: "#50fa7b",
+                activeMatchColorOverviewRuler: "#50fa7b",
+              },
+            })
+          : searchAddonRef.current.findPrevious(query, {
+              decorations: {
+                matchBackground: "#f1fa8c40",
+                matchBorder: "#f1fa8c",
+                matchOverviewRuler: "#f1fa8c",
+                activeMatchBackground: "#50fa7b60",
+                activeMatchBorder: "#50fa7b",
+                activeMatchColorOverviewRuler: "#50fa7b",
+              },
+            });
+
+      return result;
+    },
+    [sessionId, expandAll]
+  );
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -130,11 +181,27 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
       if (e.ctrlKey && e.key === "l") {
         clearSession(sessionId);
       }
+      // Ctrl+F - Find
+      if (e.ctrlKey && e.key === "f") {
+        e.preventDefault();
+        setShowSearchBar(true);
+      }
+      // Escape - Close search
+      if (e.key === "Escape" && showSearchBar) {
+        setShowSearchBar(false);
+        setSearchQuery("");
+        searchAddonRef.current?.clearDecorations();
+      }
+      // F3 or Ctrl+G - Find next
+      if ((e.key === "F3" || (e.ctrlKey && e.key === "g")) && searchQuery) {
+        e.preventDefault();
+        handleSearch(searchQuery, e.shiftKey ? "prev" : "next");
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [sessionId, collapseAll, expandAll, clearSession]);
+  }, [sessionId, collapseAll, expandAll, clearSession, showSearchBar, searchQuery, handleSearch]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -201,6 +268,10 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
 
+    const searchAddon = new SearchAddon();
+    searchAddonRef.current = searchAddon;
+    term.loadAddon(searchAddon);
+
     // Open terminal in container
     term.open(containerRef.current);
 
@@ -243,11 +314,11 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
           const bytes = new Uint8Array(event.payload);
           const text = new TextDecoder().decode(bytes);
 
-          // Write to terminal
-          term.write(bytes);
-
-          // Process for block detection
-          detector.processOutput(text);
+          // Write to terminal, then process for block detection after write completes
+          // This ensures the buffer is updated before getCurrentLine() is called
+          term.write(bytes, () => {
+            detector.processOutput(text);
+          });
         }
       );
 
@@ -315,6 +386,55 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
 
   return (
     <div className="unified-terminal" onContextMenu={handleContextMenu}>
+      {/* Search bar */}
+      {showSearchBar && (
+        <div className="terminal-search-bar">
+          <input
+            type="text"
+            className="terminal-search-input"
+            placeholder="Search..."
+            value={searchQuery}
+            autoFocus
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              if (e.target.value) {
+                handleSearch(e.target.value);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleSearch(searchQuery, e.shiftKey ? "prev" : "next");
+              }
+            }}
+          />
+          <button
+            className="terminal-search-btn"
+            onClick={() => handleSearch(searchQuery, "prev")}
+            title="Previous (Shift+Enter)"
+          >
+            &#x25B2;
+          </button>
+          <button
+            className="terminal-search-btn"
+            onClick={() => handleSearch(searchQuery, "next")}
+            title="Next (Enter)"
+          >
+            &#x25BC;
+          </button>
+          <button
+            className="terminal-search-close"
+            onClick={() => {
+              setShowSearchBar(false);
+              setSearchQuery("");
+              searchAddonRef.current?.clearDecorations();
+            }}
+            title="Close (Esc)"
+          >
+            &#x2715;
+          </button>
+        </div>
+      )}
+
       {/* Gutter overlay - synced with terminal scroll */}
       <div className="gutter-container">
         <GutterOverlay
@@ -329,6 +449,22 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
 
       {/* Terminal canvas - all output renders here */}
       <div ref={containerRef} className="terminal-canvas" />
+
+      {/* Collapsed range overlays - opaque covers for hidden lines */}
+      {collapsedRanges.map((range) => (
+        <div
+          key={`collapse-overlay-${range.markerId}`}
+          className="collapsed-range-overlay"
+          style={{
+            position: "absolute",
+            top: range.startLine * gutterSync.cellHeight - gutterSync.scrollTop,
+            left: "var(--gutter-width, 60px)",
+            right: 0,
+            height: range.hiddenCount * gutterSync.cellHeight,
+            zIndex: 5,
+          }}
+        />
+      ))}
 
       {/* Context Menu */}
       {contextMenu && (

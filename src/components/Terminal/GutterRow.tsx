@@ -27,6 +27,13 @@ export const GutterRow = memo(function GutterRow({
   // Format time as HH:MM
   const timeDisplay = formatBlockTime(marker.timestamp).slice(0, 5);
 
+  // Calculate guide line height: extends from startLine to endLine
+  // For running blocks, show a minimum height
+  const blockLineCount = marker.endLine !== null
+    ? marker.endLine - marker.startLine + 1
+    : 2; // Show at least 2 lines for running blocks
+  const guideLineHeight = blockLineCount * cellHeight;
+
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onClick) {
@@ -49,10 +56,13 @@ export const GutterRow = memo(function GutterRow({
       }}
       onClick={handleClick}
     >
-      {/* Status bar */}
+      {/* Vertical guide line - extends from startLine to endLine */}
       <span
-        className="gutter-status"
-        style={{ backgroundColor: STATUS_COLORS[marker.status] }}
+        className="gutter-guide-line"
+        style={{
+          height: guideLineHeight,
+          backgroundColor: STATUS_COLORS[marker.status],
+        }}
       />
 
       {/* Fold icon - only show for completed blocks with multiple lines */}

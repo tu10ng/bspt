@@ -30,6 +30,8 @@ interface MarkerState {
   updateMarkerEndLine: (markerId: string, endLine: number) => void;
   // Get marker by line number (for gutter click)
   findMarkerByLine: (sessionId: string, line: number) => BlockMarker | undefined;
+  // Expand blocks that contain a specific line (for search auto-expand)
+  expandBlocksContainingLine: (sessionId: string, line: number) => void;
 }
 
 export const useBlockStore = create<MarkerState>()(
@@ -210,6 +212,40 @@ export const useBlockStore = create<MarkerState>()(
           if (line < m.startLine) return false;
           if (m.endLine === null) return true; // Running marker
           return line <= m.endLine;
+        });
+      },
+
+      expandBlocksContainingLine: (sessionId: string, line: number) => {
+        set((state) => {
+          const markers = state.markers[sessionId];
+          if (!markers) return state;
+
+          // Find and expand any collapsed blocks that contain the line
+          const updatedMarkers = markers.map((m) => {
+            // Check if block is collapsed and contains the line
+            if (
+              m.collapsed &&
+              m.startLine < line &&
+              (m.endLine === null || m.endLine > line)
+            ) {
+              return { ...m, collapsed: false };
+            }
+            return m;
+          });
+
+          // Only update if something changed
+          const hasChanges = updatedMarkers.some(
+            (m, i) => m.collapsed !== markers[i].collapsed
+          );
+
+          if (!hasChanges) return state;
+
+          return {
+            markers: {
+              ...state.markers,
+              [sessionId]: updatedMarkers,
+            },
+          };
         });
       },
     }),
