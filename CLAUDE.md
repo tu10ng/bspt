@@ -107,21 +107,42 @@ Tree structure: Router (Mgmt IP) → Boards (Linux IPs). Support Telnet/SSH prot
 bspt/
 ├── .github/
 │   └── workflows/
-│       └── build.yml        # CI/CD multi-platform build
+│       └── build.yml           # CI/CD multi-platform build
 ├── src-tauri/
 │   └── src/
-│       ├── main.rs          # Tauri entry
-│       ├── session.rs       # SSH/Telnet session management
-│       ├── vrp.rs           # VRP-specific handling
-│       └── tracer.rs        # Log-to-code linkage
+│       ├── main.rs             # Tauri entry
+│       ├── lib.rs              # Tauri commands & setup
+│       ├── session.rs          # Session management with DashMap
+│       ├── ssh.rs              # SSH client (russh)
+│       ├── telnet.rs           # Telnet client with VRP integration
+│       └── vrp.rs              # VRP parser (pagination, view detection)
 ├── src/
-│   ├── App.tsx              # Main layout (Grid)
+│   ├── App.tsx                 # Main layout (Grid)
+│   ├── App.css                 # Grid & component styles
+│   ├── types/
+│   │   ├── session.ts          # RouterNode, LinuxBoardNode, VrpEvent
+│   │   └── index.ts            # Barrel export
 │   ├── components/
-│   │   ├── Terminal/        # xterm.js wrapper, blocks
-│   │   ├── Sidebar/         # Session tree
-│   │   └── Panel/           # React Flow visualization
-│   └── stores/              # Zustand stores
-└── IMPLEMENTATION_PLAN.md   # Detailed build phases
+│   │   ├── Terminal/
+│   │   │   ├── Terminal.tsx    # xterm.js wrapper with WebGL
+│   │   │   └── index.ts
+│   │   ├── Sidebar/
+│   │   │   ├── SessionTree.tsx # react-arborist tree
+│   │   │   ├── TreeContextMenu.tsx
+│   │   │   └── index.ts
+│   │   └── ThemeControls.tsx   # Theme sliders
+│   └── stores/
+│       ├── themeStore.ts       # Theme persistence
+│       └── sessionTreeStore.ts # Session tree with VRP events
+└── IMPLEMENTATION_PLAN.md      # Detailed build phases
 ```
 
 See `IMPLEMENTATION_PLAN.md` for detailed implementation steps and data structures.
+
+## Implementation Status
+
+- **Phase 1**: Project Foundation - COMPLETE
+- **Phase 2**: Terminal Core - COMPLETE
+- **Phase 3**: Session Manager - COMPLETE
+- **Phase 4**: Block-Based Terminal - Planned
+- **Phase 5**: Log Tracer & Code Linkage - Planned

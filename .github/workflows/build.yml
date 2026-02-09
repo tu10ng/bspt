@@ -54,4 +54,4 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'BSPT ${{ github.ref_name }}'
           releaseBody: 'See the changelog for details.'
-          releaseDraft: true
+          releaseDraft: false

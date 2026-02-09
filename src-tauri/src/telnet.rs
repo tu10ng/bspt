@@ -1,4 +1,5 @@
 use crate::session::{SessionConfig, SessionError, SessionHandle, SessionManager, SessionState};
+use crate::vrp::{VrpEvent, VrpParser};
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -233,6 +234,7 @@ pub async fn run_telnet_session(
     let (input_tx, mut input_rx) = mpsc::channel::<Vec<u8>>(256);
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
     let (resize_tx, mut resize_rx) = mpsc::channel::<(u32, u32)>(16);
+    let (auto_pagination_tx, mut auto_pagination_rx) = mpsc::channel::<bool>(16);
 
     // Store session handle
     let handle = SessionHandle {
@@ -242,6 +244,7 @@ pub async fn run_telnet_session(
         input_tx,
         shutdown_tx,
         resize_tx,
+        auto_pagination_tx: Some(auto_pagination_tx),
     };
     manager.insert(handle);
 
@@ -267,7 +270,8 @@ pub async fn run_telnet_session(
     info!(session_id = %session_id, "Telnet session ready");
 
     let (mut reader, mut writer) = stream.into_split();
-    let mut parser = TelnetParser::new();
+    let mut telnet_parser = TelnetParser::new();
+    let mut vrp_parser = VrpParser::new();
     let mut read_buf = [0u8; 4096];
     let mut current_cols = config.cols;
     let mut current_rows = config.rows;
@@ -282,7 +286,7 @@ pub async fn run_telnet_session(
                         break;
                     }
                     Ok(n) => {
-                        let (data, commands) = parser.parse(&read_buf[..n]);
+                        let (data, commands) = telnet_parser.parse(&read_buf[..n]);
 
                         // Handle telnet commands
                         if !commands.is_empty() {
@@ -294,11 +298,41 @@ pub async fn run_telnet_session(
                             }
                         }
 
-                        // Forward clean data to frontend
-                        if !data.is_empty() {
+                        // Process through VRP parser for Huawei-specific handling
+                        let (vrp_data, vrp_events, auto_response) = vrp_parser.parse(&data);
+
+                        // Emit VRP events to frontend
+                        for event in vrp_events {
+                            let vrp_event_name = format!("session:{}:vrp", session_id);
+                            if let Err(e) = app_handle.emit(&vrp_event_name, &event) {
+                                warn!(session_id = %session_id, error = %e, "Failed to emit VRP event");
+                            }
+                            // Log significant events
+                            match &event {
+                                VrpEvent::ViewChange { view, hostname } => {
+                                    debug!(session_id = %session_id, view = ?view, hostname = %hostname, "VRP view change");
+                                }
+                                VrpEvent::Pagination { detected, auto_handled } => {
+                                    debug!(session_id = %session_id, detected = detected, auto_handled = auto_handled, "VRP pagination");
+                                }
+                                VrpEvent::BoardInfo(board) => {
+                                    debug!(session_id = %session_id, slot = %board.slot_id, board_type = %board.board_type, "VRP board detected");
+                                }
+                            }
+                        }
+
+                        // Send auto-response (e.g., space for pagination)
+                        if let Some(response) = auto_response {
+                            if let Err(e) = writer.write_all(&response).await {
+                                warn!(session_id = %session_id, error = %e, "Failed to send VRP auto-response");
+                            }
+                        }
+
+                        // Forward data to frontend
+                        if !vrp_data.is_empty() {
                             let event_name = format!("session:{}", session_id);
-                            debug!(session_id = %session_id, bytes = data.len(), "Received data from Telnet");
-                            if let Err(e) = app_handle.emit(&event_name, data) {
+                            debug!(session_id = %session_id, bytes = vrp_data.len(), "Received data from Telnet");
+                            if let Err(e) = app_handle.emit(&event_name, vrp_data) {
                                 error!(session_id = %session_id, error = %e, "Failed to emit data event");
                             }
                         }
@@ -328,6 +362,12 @@ pub async fn run_telnet_session(
                 if let Err(e) = writer.write_all(&naws).await {
                     warn!(session_id = %session_id, error = %e, "Failed to send NAWS");
                 }
+            }
+
+            // Handle auto-pagination toggle
+            Some(enabled) = auto_pagination_rx.recv() => {
+                debug!(session_id = %session_id, enabled = enabled, "Setting auto-pagination");
+                vrp_parser.auto_pagination = enabled;
             }
 
             // Handle shutdown request

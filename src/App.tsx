@@ -1,21 +1,28 @@
 import "./App.css";
 import { useThemeStore } from "./stores/themeStore";
-import { useSessionStore, SessionConfig } from "./stores/sessionStore";
+import { useSessionTreeStore } from "./stores/sessionTreeStore";
 import { ThemeControls } from "./components/ThemeControls";
 import { TerminalView } from "./components/Terminal";
+import { SessionTree } from "./components/Sidebar";
 import { useState } from "react";
+import { Protocol } from "./types/session";
 
 function App() {
   const { opacity, blur } = useThemeStore();
-  const { sessions, activeSessionId, createSession, setActiveSession } =
-    useSessionStore();
+  const {
+    activeSessionId,
+    activeNodeId,
+    addRouter,
+    findNodeById,
+    connectNode,
+  } = useSessionTreeStore();
 
   // Quick connect form state
   const [host, setHost] = useState("");
   const [port, setPort] = useState("22");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [protocol, setProtocol] = useState<"ssh" | "telnet">("ssh");
+  const [protocol, setProtocol] = useState<Protocol>("ssh");
   const [isConnecting, setIsConnecting] = useState(false);
 
   const handleConnect = async () => {
@@ -23,23 +30,34 @@ function App() {
 
     setIsConnecting(true);
     try {
-      const config: SessionConfig = {
-        host,
+      // Add router to tree
+      const routerId = addRouter({
+        name: `${host}:${port}`,
+        mgmtIp: host,
         port: parseInt(port) || (protocol === "ssh" ? 22 : 23),
         protocol,
+        authProfileId: null,
         username,
         password,
-        cols: 80,
-        rows: 24,
-      };
+      });
 
-      await createSession(config);
+      // Connect to the new router
+      await connectNode(routerId);
+
+      // Clear form
+      setHost("");
+      setPort(protocol === "ssh" ? "22" : "23");
+      setUsername("");
+      setPassword("");
     } catch (error) {
       console.error("Failed to create session:", error);
     } finally {
       setIsConnecting(false);
     }
   };
+
+  // Get active node info for footer
+  const activeNode = activeNodeId ? findNodeById(activeNodeId) : null;
 
   // Apply dynamic CSS variables based on theme settings
   const dynamicStyles = {
@@ -93,7 +111,14 @@ function App() {
           />
           <select
             value={protocol}
-            onChange={(e) => setProtocol(e.target.value as "ssh" | "telnet")}
+            onChange={(e) => {
+              const newProtocol = e.target.value as Protocol;
+              setProtocol(newProtocol);
+              // Auto-update port when switching protocol
+              if (port === "22" || port === "23") {
+                setPort(newProtocol === "ssh" ? "22" : "23");
+              }
+            }}
             className="input-field"
           >
             <option value="ssh">SSH</option>
@@ -108,23 +133,8 @@ function App() {
           </button>
         </div>
 
-        {/* Session List */}
-        <div className="session-tree">
-          {Array.from(sessions.values()).map((session) => (
-            <div
-              key={session.id}
-              className={`session-item ${
-                activeSessionId === session.id ? "active" : ""
-              }`}
-              onClick={() => setActiveSession(session.id)}
-            >
-              <span className="session-icon">
-                {session.state === "ready" ? "*" : "o"}
-              </span>
-              <span className="session-name">{session.name}</span>
-            </div>
-          ))}
-        </div>
+        {/* Session Tree */}
+        <SessionTree />
       </aside>
 
       {/* Terminal - Main Content Area */}
@@ -148,13 +158,13 @@ function App() {
       <footer className="footer">
         <div className="footer-left">
           <span>
-            {activeSessionId
-              ? sessions.get(activeSessionId)?.state || "Ready"
+            {activeNode
+              ? activeNode.connectionState
               : "No session"}
           </span>
         </div>
         <div className="footer-right">
-          <span>{activeSessionId ? protocol.toUpperCase() : "-"}</span>
+          <span>{activeNode ? activeNode.protocol.toUpperCase() : "-"}</span>
           <span>UTF-8</span>
         </div>
       </footer>

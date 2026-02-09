@@ -90,7 +90,7 @@ pub async fn run_ssh_session(
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
     let (resize_tx, mut resize_rx) = mpsc::channel::<(u32, u32)>(16);
 
-    // Store session handle
+    // Store session handle (SSH doesn't use auto_pagination - VRP is telnet-only)
     let handle = SessionHandle {
         id: session_id.clone(),
         config: config.clone(),
@@ -98,6 +98,7 @@ pub async fn run_ssh_session(
         input_tx,
         shutdown_tx,
         resize_tx,
+        auto_pagination_tx: None,
     };
     manager.insert(handle);
 

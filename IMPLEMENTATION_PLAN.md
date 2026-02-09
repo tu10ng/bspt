@@ -2,7 +2,7 @@
 
 Detailed implementation guide for BSPT (Board Support Package Terminal).
 
-## Phase 1: Project Foundation
+## Phase 1: Project Foundation (COMPLETE)
 
 ### Goals
 - Initialize Tauri v2 project with React + TypeScript + Vite
@@ -107,13 +107,13 @@ Detailed implementation guide for BSPT (Board Support Package Terminal).
    ```
 
 ### Verification
-- [ ] Glass effect visible on Windows/macOS
-- [ ] Grid layout renders correctly
-- [ ] Theme slider adjusts opacity in real-time
+- [x] Glass effect visible on Windows/macOS
+- [x] Grid layout renders correctly
+- [x] Theme slider adjusts opacity in real-time
 
 ---
 
-## Phase 2: Terminal Core
+## Phase 2: Terminal Core (COMPLETE)
 
 ### Goals
 - Set up xterm.js with WebGL addon
@@ -252,13 +252,13 @@ Detailed implementation guide for BSPT (Board Support Package Terminal).
    ```
 
 ### Verification
-- [ ] SSH connection to real server works
-- [ ] Telnet connection works
-- [ ] Data flows from xterm input → Rust → server → Rust → xterm output
+- [x] SSH connection to real server works
+- [x] Telnet connection works
+- [x] Data flows from xterm input → Rust → server → Rust → xterm output
 
 ---
 
-## Phase 3: Session Manager (Left Tree)
+## Phase 3: Session Manager (COMPLETE)
 
 ### Goals
 - Implement session tree with react-arborist
@@ -352,10 +352,13 @@ Detailed implementation guide for BSPT (Board Support Package Terminal).
    ```
 
 ### Verification
-- [ ] Tree displays routers and boards
-- [ ] Double-click opens session
-- [ ] Protocol badge shows correctly
-- [ ] "Scan Boards" populates child nodes
+- [x] Tree displays routers and boards
+- [x] Double-click opens session
+- [x] Protocol badge shows correctly
+- [x] "Scan Boards" populates child nodes
+- [x] Context menu (Connect, Disconnect, Scan, Remove)
+- [x] VRP auto-pagination handles `---- More ----`
+- [x] Sessions persist to localStorage
 
 ---
 
@@ -711,10 +714,10 @@ while True:
 
 ### Testing Milestones
 
-| Phase | Test | Pass Criteria |
-|-------|------|---------------|
-| 1 | Visual inspection | Glass effect visible, grid responsive |
-| 2 | SSH/Telnet connection | Real server echo works |
-| 3 | Tree operations | Add/remove/switch persists |
-| 4 | Stress test | 100k lines, no freeze |
-| 5 | Log matching | Index C project, link works |
+| Phase | Test | Pass Criteria | Status |
+|-------|------|---------------|--------|
+| 1 | Visual inspection | Glass effect visible, grid responsive | PASS |
+| 2 | SSH/Telnet connection | Real server echo works | PASS |
+| 3 | Tree operations | Add/remove/switch persists, VRP pagination | PASS |
+| 4 | Stress test | 100k lines, no freeze | - |
+| 5 | Log matching | Index C project, link works | - |

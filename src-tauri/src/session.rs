@@ -64,6 +64,7 @@ pub struct SessionHandle {
     pub input_tx: mpsc::Sender<Vec<u8>>,
     pub shutdown_tx: mpsc::Sender<()>,
     pub resize_tx: mpsc::Sender<(u32, u32)>,
+    pub auto_pagination_tx: Option<mpsc::Sender<bool>>,
 }
 
 pub struct SessionManager {
@@ -136,6 +137,23 @@ impl SessionManager {
 
         let _ = handle.shutdown_tx.send(()).await;
         self.remove(session_id);
+        Ok(())
+    }
+
+    pub async fn set_auto_pagination(
+        &self,
+        session_id: &str,
+        enabled: bool,
+    ) -> Result<(), SessionError> {
+        let handle = self
+            .get(session_id)
+            .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
+
+        if let Some(ref tx) = handle.auto_pagination_tx {
+            tx.send(enabled)
+                .await
+                .map_err(|e| SessionError::ChannelError(e.to_string()))?;
+        }
         Ok(())
     }
 }

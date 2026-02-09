@@ -1,6 +1,7 @@
 mod session;
 mod ssh;
 mod telnet;
+mod vrp;
 
 use session::{Protocol, SessionConfig, SessionManager};
 use std::sync::Arc;
@@ -69,6 +70,26 @@ async fn resize_terminal(
     state.resize(&session_id, cols, rows).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn scan_boards(
+    session_id: String,
+    state: tauri::State<'_, Arc<SessionManager>>,
+) -> Result<(), String> {
+    // Send "display device" command to get board information
+    // The VRP parser will detect and emit BoardInfo events
+    let cmd = b"display device\r\n";
+    state.send_data(&session_id, cmd.to_vec()).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_auto_pagination(
+    session_id: String,
+    enabled: bool,
+    state: tauri::State<'_, Arc<SessionManager>>,
+) -> Result<(), String> {
+    state.set_auto_pagination(&session_id, enabled).await.map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize tracing
@@ -100,7 +121,9 @@ pub fn run() {
             create_session,
             send_input,
             disconnect_session,
-            resize_terminal
+            resize_terminal,
+            scan_boards,
+            set_auto_pagination
         ]);
 
     builder
