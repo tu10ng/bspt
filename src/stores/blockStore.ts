@@ -1,146 +1,157 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { Block, BlockStatus } from "../types/session";
+import { BlockMarker, BlockStatus } from "../types/session";
 import { v4 as uuidv4 } from "uuid";
 
-interface BlockState {
-  // Blocks per session
-  blocks: Record<string, Block[]>;
-  // Maximum blocks to keep per session
-  maxBlocksPerSession: number;
+interface MarkerState {
+  // Markers per session
+  markers: Record<string, BlockMarker[]>;
+  // Maximum markers to keep per session
+  maxMarkersPerSession: number;
+  // Active marker for Outline synchronization
+  activeMarkerId: string | null;
 
   // Actions
-  createBlock: (sessionId: string, command: string) => string;
-  appendOutput: (blockId: string, output: string) => void;
-  completeBlock: (blockId: string, status: BlockStatus) => void;
-  toggleCollapse: (blockId: string) => void;
+  createMarker: (
+    sessionId: string,
+    command: string,
+    startLine: number
+  ) => string;
+  completeMarker: (markerId: string, endLine: number, status: BlockStatus) => void;
+  toggleCollapse: (markerId: string) => void;
   collapseAll: (sessionId: string) => void;
   expandAll: (sessionId: string) => void;
   clearSession: (sessionId: string) => void;
-  getBlock: (blockId: string) => Block | undefined;
-  getSessionBlocks: (sessionId: string) => Block[];
+  setActiveMarker: (markerId: string | null) => void;
+  getMarker: (markerId: string) => BlockMarker | undefined;
+  getSessionMarkers: (sessionId: string) => BlockMarker[];
   getCommandHistory: (sessionId: string) => string[];
+  // Update marker end line while running (for tracking scroll position)
+  updateMarkerEndLine: (markerId: string, endLine: number) => void;
+  // Get marker by line number (for gutter click)
+  findMarkerByLine: (sessionId: string, line: number) => BlockMarker | undefined;
 }
 
-export const useBlockStore = create<BlockState>()(
+export const useBlockStore = create<MarkerState>()(
   persist(
     (set, get) => ({
-      blocks: {},
-      maxBlocksPerSession: 500,
+      markers: {},
+      maxMarkersPerSession: 500,
+      activeMarkerId: null,
 
-      createBlock: (sessionId: string, command: string) => {
-        const blockId = uuidv4();
-        const block: Block = {
-          id: blockId,
+      createMarker: (sessionId: string, command: string, startLine: number) => {
+        const markerId = uuidv4();
+        const marker: BlockMarker = {
+          id: markerId,
           sessionId,
           command,
           timestamp: new Date(),
           status: "running",
-          output: "",
           collapsed: false,
-          lineCount: 0,
+          startLine,
+          endLine: null,
         };
 
         set((state) => {
-          const sessionBlocks = state.blocks[sessionId] || [];
-          let newBlocks = [...sessionBlocks, block];
+          const sessionMarkers = state.markers[sessionId] || [];
+          let newMarkers = [...sessionMarkers, marker];
 
-          // Enforce max blocks limit
-          if (newBlocks.length > state.maxBlocksPerSession) {
-            newBlocks = newBlocks.slice(-state.maxBlocksPerSession);
+          // Enforce max markers limit
+          if (newMarkers.length > state.maxMarkersPerSession) {
+            newMarkers = newMarkers.slice(-state.maxMarkersPerSession);
           }
 
           return {
-            blocks: {
-              ...state.blocks,
-              [sessionId]: newBlocks,
+            markers: {
+              ...state.markers,
+              [sessionId]: newMarkers,
             },
           };
         });
 
-        return blockId;
+        return markerId;
       },
 
-      appendOutput: (blockId: string, output: string) => {
+      completeMarker: (markerId: string, endLine: number, status: BlockStatus) => {
         set((state) => {
-          const newBlocks = { ...state.blocks };
+          const newMarkers = { ...state.markers };
 
-          for (const sessionId of Object.keys(newBlocks)) {
-            const blocks = newBlocks[sessionId];
-            const blockIndex = blocks.findIndex((b) => b.id === blockId);
+          for (const sessionId of Object.keys(newMarkers)) {
+            const markers = newMarkers[sessionId];
+            const markerIndex = markers.findIndex((m) => m.id === markerId);
 
-            if (blockIndex !== -1) {
-              const block = blocks[blockIndex];
-              const newOutput = block.output + output;
-              const lineCount = (newOutput.match(/\n/g) || []).length + 1;
-
-              newBlocks[sessionId] = [
-                ...blocks.slice(0, blockIndex),
-                { ...block, output: newOutput, lineCount },
-                ...blocks.slice(blockIndex + 1),
+            if (markerIndex !== -1) {
+              newMarkers[sessionId] = [
+                ...markers.slice(0, markerIndex),
+                { ...markers[markerIndex], status, endLine },
+                ...markers.slice(markerIndex + 1),
               ];
               break;
             }
           }
 
-          return { blocks: newBlocks };
+          return { markers: newMarkers };
         });
       },
 
-      completeBlock: (blockId: string, status: BlockStatus) => {
+      updateMarkerEndLine: (markerId: string, endLine: number) => {
         set((state) => {
-          const newBlocks = { ...state.blocks };
+          const newMarkers = { ...state.markers };
 
-          for (const sessionId of Object.keys(newBlocks)) {
-            const blocks = newBlocks[sessionId];
-            const blockIndex = blocks.findIndex((b) => b.id === blockId);
+          for (const sessionId of Object.keys(newMarkers)) {
+            const markers = newMarkers[sessionId];
+            const markerIndex = markers.findIndex((m) => m.id === markerId);
 
-            if (blockIndex !== -1) {
-              newBlocks[sessionId] = [
-                ...blocks.slice(0, blockIndex),
-                { ...blocks[blockIndex], status },
-                ...blocks.slice(blockIndex + 1),
-              ];
+            if (markerIndex !== -1) {
+              const marker = markers[markerIndex];
+              // Only update if running
+              if (marker.status === "running") {
+                newMarkers[sessionId] = [
+                  ...markers.slice(0, markerIndex),
+                  { ...marker, endLine },
+                  ...markers.slice(markerIndex + 1),
+                ];
+              }
               break;
             }
           }
 
-          return { blocks: newBlocks };
+          return { markers: newMarkers };
         });
       },
 
-      toggleCollapse: (blockId: string) => {
+      toggleCollapse: (markerId: string) => {
         set((state) => {
-          const newBlocks = { ...state.blocks };
+          const newMarkers = { ...state.markers };
 
-          for (const sessionId of Object.keys(newBlocks)) {
-            const blocks = newBlocks[sessionId];
-            const blockIndex = blocks.findIndex((b) => b.id === blockId);
+          for (const sessionId of Object.keys(newMarkers)) {
+            const markers = newMarkers[sessionId];
+            const markerIndex = markers.findIndex((m) => m.id === markerId);
 
-            if (blockIndex !== -1) {
-              const block = blocks[blockIndex];
-              newBlocks[sessionId] = [
-                ...blocks.slice(0, blockIndex),
-                { ...block, collapsed: !block.collapsed },
-                ...blocks.slice(blockIndex + 1),
+            if (markerIndex !== -1) {
+              const marker = markers[markerIndex];
+              newMarkers[sessionId] = [
+                ...markers.slice(0, markerIndex),
+                { ...marker, collapsed: !marker.collapsed },
+                ...markers.slice(markerIndex + 1),
               ];
               break;
             }
           }
 
-          return { blocks: newBlocks };
+          return { markers: newMarkers };
         });
       },
 
       collapseAll: (sessionId: string) => {
         set((state) => {
-          const blocks = state.blocks[sessionId];
-          if (!blocks) return state;
+          const markers = state.markers[sessionId];
+          if (!markers) return state;
 
           return {
-            blocks: {
-              ...state.blocks,
-              [sessionId]: blocks.map((b) => ({ ...b, collapsed: true })),
+            markers: {
+              ...state.markers,
+              [sessionId]: markers.map((m) => ({ ...m, collapsed: true })),
             },
           };
         });
@@ -148,13 +159,13 @@ export const useBlockStore = create<BlockState>()(
 
       expandAll: (sessionId: string) => {
         set((state) => {
-          const blocks = state.blocks[sessionId];
-          if (!blocks) return state;
+          const markers = state.markers[sessionId];
+          if (!markers) return state;
 
           return {
-            blocks: {
-              ...state.blocks,
-              [sessionId]: blocks.map((b) => ({ ...b, collapsed: false })),
+            markers: {
+              ...state.markers,
+              [sessionId]: markers.map((m) => ({ ...m, collapsed: false })),
             },
           };
         });
@@ -162,34 +173,48 @@ export const useBlockStore = create<BlockState>()(
 
       clearSession: (sessionId: string) => {
         set((state) => {
-          const newBlocks = { ...state.blocks };
-          delete newBlocks[sessionId];
-          return { blocks: newBlocks };
+          const newMarkers = { ...state.markers };
+          delete newMarkers[sessionId];
+          return { markers: newMarkers, activeMarkerId: null };
         });
       },
 
-      getBlock: (blockId: string) => {
+      setActiveMarker: (markerId: string | null) => {
+        set({ activeMarkerId: markerId });
+      },
+
+      getMarker: (markerId: string) => {
         const state = get();
-        for (const sessionId of Object.keys(state.blocks)) {
-          const block = state.blocks[sessionId].find((b) => b.id === blockId);
-          if (block) return block;
+        for (const sessionId of Object.keys(state.markers)) {
+          const marker = state.markers[sessionId].find((m) => m.id === markerId);
+          if (marker) return marker;
         }
         return undefined;
       },
 
-      getSessionBlocks: (sessionId: string) => {
-        return get().blocks[sessionId] || [];
+      getSessionMarkers: (sessionId: string) => {
+        return get().markers[sessionId] || [];
       },
 
       getCommandHistory: (sessionId: string) => {
-        const blocks = get().blocks[sessionId] || [];
-        return blocks
-          .map((b) => b.command)
+        const markers = get().markers[sessionId] || [];
+        return markers
+          .map((m) => m.command)
           .filter((cmd) => cmd.trim().length > 0);
+      },
+
+      findMarkerByLine: (sessionId: string, line: number) => {
+        const markers = get().markers[sessionId] || [];
+        // Find marker where startLine <= line <= endLine (or endLine is null for running)
+        return markers.find((m) => {
+          if (line < m.startLine) return false;
+          if (m.endLine === null) return true; // Running marker
+          return line <= m.endLine;
+        });
       },
     }),
     {
-      name: "bspt-blocks",
+      name: "bspt-markers",
       // Custom serialization for Date objects
       storage: {
         getItem: (name) => {
@@ -197,14 +222,14 @@ export const useBlockStore = create<BlockState>()(
           if (!str) return null;
           const parsed = JSON.parse(str);
           // Convert timestamp strings back to Date objects
-          if (parsed.state?.blocks) {
-            for (const sessionId of Object.keys(parsed.state.blocks)) {
-              parsed.state.blocks[sessionId] = parsed.state.blocks[sessionId].map(
-                (block: Block & { timestamp: string }) => ({
-                  ...block,
-                  timestamp: new Date(block.timestamp),
-                })
-              );
+          if (parsed.state?.markers) {
+            for (const sessionId of Object.keys(parsed.state.markers)) {
+              parsed.state.markers[sessionId] = parsed.state.markers[
+                sessionId
+              ].map((marker: BlockMarker & { timestamp: string }) => ({
+                ...marker,
+                timestamp: new Date(marker.timestamp),
+              }));
             }
           }
           return parsed;

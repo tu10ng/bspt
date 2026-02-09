@@ -460,8 +460,26 @@
 }
 
 /* ========================================
-   Block-Based Terminal Styles
+   Block-Based Terminal Styles (WindTerm Style)
    ======================================== */
+
+/* CSS Variables for Block Terminal */
+:root {
+  --block-gutter-width: 24px;
+  --block-header-height: 36px;
+  --block-fold-icon-size: 12px;
+  --block-status-bar-width: 3px;
+
+  --block-status-running: #f1fa8c;
+  --block-status-success: #50fa7b;
+  --block-status-error: #ff5555;
+
+  --block-header-bg: rgba(255, 255, 255, 0.03);
+  --block-separator: rgba(255, 255, 255, 0.1);
+  --block-gutter-bg: rgba(0, 0, 0, 0.2);
+  --block-active-bg: rgba(80, 250, 123, 0.1);
+  --block-active-border: rgba(80, 250, 123, 0.3);
+}
 
 /* Block Terminal Container */
 .block-terminal {
@@ -472,20 +490,17 @@
 }
 
 .block-list-container {
-  /* Fixed max height, scrollable */
-  max-height: 40%;
+  flex: 1;
   overflow-y: auto;
-  padding: 8px;
   scroll-behavior: smooth;
-  flex-shrink: 0;
 }
 
 .terminal-main-container {
-  /* Takes remaining space */
-  flex: 1;
-  min-height: 60%;
+  flex-shrink: 0;
+  min-height: 200px;
+  max-height: 40%;
   position: relative;
-  padding: 8px;
+  border-top: 1px solid var(--block-separator);
 }
 
 .terminal-main-container .xterm {
@@ -504,35 +519,83 @@
 .block-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 /* Individual Block */
 .block {
-  background: var(--color-surface-secondary);
-  border-radius: 6px;
-  overflow: hidden;
+  border-bottom: 1px solid var(--block-separator);
   transition: background 0.15s;
 }
 
-.block:hover {
-  background: var(--color-surface-tertiary);
+.block:last-child {
+  border-bottom: none;
+}
+
+.block-active {
+  background: var(--block-active-bg);
+  box-shadow: inset 3px 0 0 var(--block-active-border);
+}
+
+/* Block Row: Gutter + Content */
+.block-row {
+  display: grid;
+  grid-template-columns: var(--block-gutter-width) 1fr;
+}
+
+/* Block Gutter */
+.block-gutter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 10px;
+  background: var(--block-gutter-bg);
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+}
+
+.block-gutter:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.block-fold-icon {
+  font-size: var(--block-fold-icon-size);
+  color: var(--color-text-muted);
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.block-gutter:hover .block-fold-icon {
+  color: var(--color-text-primary);
+}
+
+.block-status-bar {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--block-status-bar-width);
+}
+
+/* Block Content */
+.block-content {
+  display: flex;
+  flex-direction: column;
 }
 
 .block-header {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: var(--block-header-height);
   padding: 8px 12px;
+  background: var(--block-header-bg);
   cursor: pointer;
   user-select: none;
 }
 
-.block-gutter {
-  width: 4px;
-  height: 16px;
-  border-radius: 2px;
-  flex-shrink: 0;
+.block-header:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .block-command {
@@ -566,19 +629,10 @@
   font-family: var(--font-mono, monospace);
 }
 
-.block-chevron {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-  width: 12px;
-  text-align: center;
-}
-
 .block-body {
   margin: 0;
   padding: 8px 12px;
-  padding-left: 24px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.15);
   font-family: var(--font-mono, "JetBrains Mono", monospace);
   font-size: 12px;
   line-height: 1.5;
@@ -590,8 +644,158 @@
   overflow-y: auto;
 }
 
+/* Collapsed state */
 .block-collapsed .block-body {
   display: none;
+}
+
+.block-collapsed .block-gutter {
+  padding-bottom: 10px;
+}
+
+/* ========================================
+   Outline Panel Styles
+   ======================================== */
+
+.outline-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.outline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-glass-border);
+  flex-shrink: 0;
+}
+
+.outline-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.outline-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.outline-action-btn {
+  padding: 4px 8px;
+  background: transparent;
+  border: 1px solid var(--color-glass-border);
+  border-radius: 4px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.outline-action-btn:hover {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-primary);
+}
+
+.outline-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.outline-session {
+  margin-bottom: 12px;
+}
+
+.outline-session-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.outline-session-icon {
+  font-size: 10px;
+}
+
+.outline-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  padding-left: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.outline-item:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.outline-item-active {
+  background: var(--block-active-bg);
+  border-left: 2px solid var(--block-status-success);
+  padding-left: 18px;
+}
+
+.outline-item-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.outline-item-status.running {
+  background: var(--block-status-running);
+}
+
+.outline-item-status.success {
+  background: var(--block-status-success);
+}
+
+.outline-item-status.error {
+  background: var(--block-status-error);
+}
+
+.outline-item-command {
+  flex: 1;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outline-item-time {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.outline-item-lines {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-tertiary);
+  padding: 1px 4px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.outline-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 /* Input Overlay */
@@ -738,4 +942,123 @@
 
 .toggle-switch.active::after {
   transform: translateX(20px);
+}
+
+/* ========================================
+   Unified Terminal Styles (WindTerm Style)
+   Single-buffer architecture with gutter overlay
+   ======================================== */
+
+:root {
+  --gutter-width: 60px;
+}
+
+/* Unified Terminal Container */
+.unified-terminal {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Gutter Container - left side overlay */
+.gutter-container {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--gutter-width);
+  background: rgba(0, 0, 0, 0.3);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  z-index: 10;
+}
+
+/* Gutter Overlay - transforms with scroll */
+.gutter-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  will-change: transform;
+}
+
+/* Gutter Row - single marker entry */
+.gutter-row {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.gutter-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Status bar - left edge indicator */
+.gutter-status {
+  width: 3px;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+/* Fold icon */
+.gutter-fold {
+  font-size: 10px;
+  color: var(--color-text-muted, #888);
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+
+.gutter-row:hover .gutter-fold {
+  color: var(--color-text-primary, #fff);
+}
+
+/* Timestamp */
+.gutter-time {
+  font-size: 9px;
+  color: var(--color-text-muted, #666);
+  font-family: var(--font-mono, monospace);
+  flex-shrink: 0;
+}
+
+/* Terminal Canvas - main xterm.js area */
+.terminal-canvas {
+  position: absolute;
+  left: var(--gutter-width);
+  right: 0;
+  top: 0;
+  bottom: 0;
+}
+
+.terminal-canvas .xterm {
+  height: 100%;
+}
+
+.terminal-canvas .xterm-viewport {
+  background: transparent !important;
+}
+
+.terminal-canvas .xterm-screen {
+  background: transparent !important;
+}
+
+/* Fold ellipsis indicator */
+.fold-ellipsis {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+  font-size: 11px;
+  color: var(--color-text-muted, #666);
+  font-style: italic;
+  background: rgba(0, 0, 0, 0.2);
+  pointer-events: none;
 }

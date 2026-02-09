@@ -1,7 +1,3 @@
-/**
- * @deprecated Use UnifiedTerminal instead - this component uses the old
- * dual-buffer architecture with React divs + xterm.js
- */
 import { useEffect, useRef, useCallback, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -13,27 +9,19 @@ import "@xterm/xterm/css/xterm.css";
 import { useThemeStore } from "../../stores/themeStore";
 import { useBlockStore } from "../../stores/blockStore";
 import { BlockDetector } from "../../utils/blockDetector";
-import { getCurrentBufferLine } from "../../hooks/useGutterSync";
-import { BlockMarker } from "../../types/session";
-import { formatBlockTime, stripAnsi } from "../../utils/blockDetector";
+import { useGutterSync, getCurrentBufferLine } from "../../hooks/useGutterSync";
+import { GutterOverlay } from "./GutterOverlay";
 
-interface BlockTerminalProps {
+interface UnifiedTerminalProps {
   sessionId: string;
-  activeBlockId?: string | null;
+  activeMarkerId?: string | null;
 }
 
-/**
- * @deprecated Use UnifiedTerminal instead
- */
-export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) {
-  const blockListRef = useRef<HTMLDivElement>(null);
-  const terminalContainerRef = useRef<HTMLDivElement>(null);
+export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: UnifiedTerminalProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const detectorRef = useRef<BlockDetector | null>(null);
-
-  // Track output per marker for legacy display
-  const [markerOutputs, setMarkerOutputs] = useState<Record<string, string>>({});
 
   const { fontFamily } = useThemeStore();
   const {
@@ -44,9 +32,16 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
     expandAll,
     clearSession,
     getSessionMarkers,
+    setActiveMarker,
   } = useBlockStore();
 
   const markers = getSessionMarkers(sessionId);
+
+  // Gutter sync state
+  const gutterSync = useGutterSync(terminalRef.current);
+
+  // Container dimensions for gutter
+  const [containerHeight, setContainerHeight] = useState(0);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -54,13 +49,6 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
     y: number;
     markerId: string;
   } | null>(null);
-
-  // Scroll to bottom when new markers are added
-  useEffect(() => {
-    if (blockListRef.current) {
-      blockListRef.current.scrollTop = blockListRef.current.scrollHeight;
-    }
-  }, [markers.length]);
 
   const handleResize = useCallback(() => {
     if (!fitAddonRef.current || !terminalRef.current) return;
@@ -75,19 +63,50 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
     }).catch(console.error);
   }, [sessionId]);
 
-  const handleBlockToggle = useCallback(
+  const handleMarkerToggle = useCallback(
     (markerId: string) => {
       toggleCollapse(markerId);
     },
     [toggleCollapse]
   );
 
-  const handleContextMenu = useCallback(
-    (markerId: string, e: React.MouseEvent) => {
-      e.preventDefault();
-      setContextMenu({ x: e.clientX, y: e.clientY, markerId });
+  const handleMarkerClick = useCallback(
+    (markerId: string) => {
+      setActiveMarker(markerId);
+      // Scroll terminal to marker position
+      const marker = markers.find((m) => m.id === markerId);
+      if (marker && terminalRef.current) {
+        terminalRef.current.scrollToLine(marker.startLine);
+      }
+      // Clear highlight after 2 seconds
+      setTimeout(() => {
+        setActiveMarker(null);
+      }, 2000);
     },
-    []
+    [markers, setActiveMarker]
+  );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      // Find marker at click position
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const clickY = e.clientY - rect.top + gutterSync.scrollTop;
+      const clickLine = Math.floor(clickY / gutterSync.cellHeight);
+
+      const marker = markers.find((m) => {
+        if (clickLine < m.startLine) return false;
+        if (m.endLine === null) return clickLine <= m.startLine + 100; // Running marker
+        return clickLine <= m.endLine;
+      });
+
+      if (marker) {
+        setContextMenu({ x: e.clientX, y: e.clientY, markerId: marker.id });
+      }
+    },
+    [markers, gutterSync]
   );
 
   const closeContextMenu = useCallback(() => {
@@ -97,17 +116,19 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Shift+[ - Collapse All
       if (e.ctrlKey && e.shiftKey && e.key === "[") {
         e.preventDefault();
         collapseAll(sessionId);
       }
+      // Ctrl+Shift+] - Expand All
       if (e.ctrlKey && e.shiftKey && e.key === "]") {
         e.preventDefault();
         expandAll(sessionId);
       }
+      // Ctrl+L - Clear All
       if (e.ctrlKey && e.key === "l") {
         clearSession(sessionId);
-        setMarkerOutputs({});
       }
     };
 
@@ -124,26 +145,9 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
     }
   }, [contextMenu, closeContextMenu]);
 
+  // Initialize terminal
   useEffect(() => {
-    if (!terminalContainerRef.current) return;
-
-    // Track current marker for output capture
-    let currentMarkerId: string | null = null;
-
-    // Initialize block detector
-    const detector = new BlockDetector({
-      onBlockStart: (command, startLine) => {
-        const markerId = createMarker(sessionId, command, startLine);
-        currentMarkerId = markerId;
-        return markerId;
-      },
-      onBlockComplete: (markerId, endLine, status) => {
-        completeMarker(markerId, endLine, status);
-        currentMarkerId = null;
-      },
-      getCurrentLine: () => getCurrentBufferLine(terminalRef.current),
-    });
-    detectorRef.current = detector;
+    if (!containerRef.current) return;
 
     // Create terminal with transparent background
     const term = new Terminal({
@@ -180,13 +184,25 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
 
     terminalRef.current = term;
 
+    // Initialize block detector with line number tracking
+    const detector = new BlockDetector({
+      onBlockStart: (command, startLine) => {
+        return createMarker(sessionId, command, startLine);
+      },
+      onBlockComplete: (markerId, endLine, status) => {
+        completeMarker(markerId, endLine, status);
+      },
+      getCurrentLine: () => getCurrentBufferLine(term),
+    });
+    detectorRef.current = detector;
+
     // Initialize addons
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
 
     // Open terminal in container
-    term.open(terminalContainerRef.current);
+    term.open(containerRef.current);
 
     // Try to load WebGL addon for better performance
     try {
@@ -202,7 +218,7 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
     // Fit terminal to container
     fitAddon.fit();
 
-    // Handle terminal input - send all input directly to backend
+    // Handle terminal input
     const inputDisposable = term.onData((data) => {
       // Update detector state for block detection
       detector.processInput(data);
@@ -232,14 +248,6 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
 
           // Process for block detection
           detector.processOutput(text);
-
-          // Capture output for legacy display
-          if (currentMarkerId) {
-            setMarkerOutputs((prev) => ({
-              ...prev,
-              [currentMarkerId!]: (prev[currentMarkerId!] || "") + text,
-            }));
-          }
         }
       );
 
@@ -254,11 +262,15 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
     setupListeners();
 
     // Handle window resize
-    const resizeObserver = new ResizeObserver(() => {
+    const resizeObserver = new ResizeObserver((entries) => {
       handleResize();
+      // Update container height for gutter
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height);
+      }
     });
-    if (terminalContainerRef.current) {
-      resizeObserver.observe(terminalContainerRef.current);
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
     }
 
     // Cleanup
@@ -288,15 +300,6 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
     closeContextMenu();
   }, [contextMenu, markers, closeContextMenu]);
 
-  const handleCopyOutput = useCallback(() => {
-    if (!contextMenu) return;
-    const output = markerOutputs[contextMenu.markerId];
-    if (output) {
-      navigator.clipboard.writeText(output);
-    }
-    closeContextMenu();
-  }, [contextMenu, markerOutputs, closeContextMenu]);
-
   const handleRerunCommand = useCallback(() => {
     if (!contextMenu) return;
     const marker = markers.find((m) => m.id === contextMenu.markerId);
@@ -311,23 +314,21 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
   }, [contextMenu, markers, sessionId, closeContextMenu]);
 
   return (
-    <div className="block-terminal">
-      {/* Historical blocks - scrollable area */}
-      <div ref={blockListRef} className="block-list-container">
-        <LegacyBlockList
+    <div className="unified-terminal" onContextMenu={handleContextMenu}>
+      {/* Gutter overlay - synced with terminal scroll */}
+      <div className="gutter-container">
+        <GutterOverlay
           markers={markers}
-          outputs={markerOutputs}
-          activeMarkerId={activeBlockId ?? undefined}
-          onToggle={handleBlockToggle}
-          onContextMenu={handleContextMenu}
+          scrollTop={gutterSync.scrollTop}
+          cellHeight={gutterSync.cellHeight}
+          viewportHeight={containerHeight}
+          onToggleMarker={handleMarkerToggle}
+          onClickMarker={handleMarkerClick}
         />
       </div>
 
-      {/* xterm.js handles active input */}
-      <div
-        ref={terminalContainerRef}
-        className="terminal-main-container"
-      />
+      {/* Terminal canvas - all output renders here */}
+      <div ref={containerRef} className="terminal-canvas" />
 
       {/* Context Menu */}
       {contextMenu && (
@@ -343,9 +344,6 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
           <button className="context-menu-item" onClick={handleCopyCommand}>
             Copy Command
           </button>
-          <button className="context-menu-item" onClick={handleCopyOutput}>
-            Copy Output
-          </button>
           <div className="context-menu-separator" />
           <button className="context-menu-item" onClick={handleRerunCommand}>
             Re-run Command
@@ -360,10 +358,13 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
           >
             Toggle Collapse
           </button>
-          <button className="context-menu-item" onClick={() => {
-            collapseAll(sessionId);
-            closeContextMenu();
-          }}>
+          <button
+            className="context-menu-item"
+            onClick={() => {
+              collapseAll(sessionId);
+              closeContextMenu();
+            }}
+          >
             Collapse All
           </button>
         </div>
@@ -372,101 +373,4 @@ export function BlockTerminal({ sessionId, activeBlockId }: BlockTerminalProps) 
   );
 }
 
-// Legacy block list component for backward compatibility
-interface LegacyBlockListProps {
-  markers: BlockMarker[];
-  outputs: Record<string, string>;
-  activeMarkerId?: string;
-  onToggle: (markerId: string) => void;
-  onContextMenu: (markerId: string, e: React.MouseEvent) => void;
-}
-
-function LegacyBlockList({
-  markers,
-  outputs,
-  activeMarkerId,
-  onToggle,
-  onContextMenu,
-}: LegacyBlockListProps) {
-  if (markers.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="block-list">
-      {markers.map((marker) => (
-        <LegacyBlockView
-          key={marker.id}
-          marker={marker}
-          output={outputs[marker.id] || ""}
-          isActive={marker.id === activeMarkerId}
-          onToggle={() => onToggle(marker.id)}
-          onContextMenu={(e) => onContextMenu(marker.id, e)}
-        />
-      ))}
-    </div>
-  );
-}
-
-interface LegacyBlockViewProps {
-  marker: BlockMarker;
-  output: string;
-  isActive: boolean;
-  onToggle: () => void;
-  onContextMenu: (e: React.MouseEvent) => void;
-}
-
-function LegacyBlockView({
-  marker,
-  output,
-  isActive,
-  onToggle,
-  onContextMenu,
-}: LegacyBlockViewProps) {
-  const cleanOutput = stripAnsi(output);
-  const lineCount = (cleanOutput.match(/\n/g) || []).length + 1;
-
-  return (
-    <div
-      className={`block ${marker.collapsed ? "block-collapsed" : ""} ${isActive ? "block-active" : ""}`}
-      onContextMenu={onContextMenu}
-    >
-      <div className="block-row">
-        <div className="block-gutter" onClick={onToggle}>
-          <span className="block-fold-icon">
-            {marker.collapsed ? "\u25B6" : "\u25BC"}
-          </span>
-          <span
-            className="block-status-bar"
-            style={{
-              backgroundColor:
-                marker.status === "running"
-                  ? "var(--block-status-running)"
-                  : marker.status === "success"
-                  ? "var(--block-status-success)"
-                  : "var(--block-status-error)",
-            }}
-          />
-        </div>
-        <div className="block-content">
-          <div className="block-header" onClick={onToggle}>
-            <span className="block-command">{marker.command || "(empty)"}</span>
-            <span className="block-meta">
-              {lineCount > 1 && (
-                <span className="block-line-count">{lineCount} lines</span>
-              )}
-              <span className="block-timestamp">
-                {formatBlockTime(marker.timestamp)}
-              </span>
-            </span>
-          </div>
-          {!marker.collapsed && cleanOutput && (
-            <pre className="block-body">{cleanOutput}</pre>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default BlockTerminal;
+export default UnifiedTerminal;

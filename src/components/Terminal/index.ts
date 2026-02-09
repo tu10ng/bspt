@@ -1,5 +1,10 @@
 export { TerminalView } from "./Terminal";
+export { UnifiedTerminal } from "./UnifiedTerminal";
+export { GutterOverlay } from "./GutterOverlay";
+export { GutterRow } from "./GutterRow";
+export { Outline } from "./Outline";
+
+// Legacy exports - deprecated, use UnifiedTerminal instead
 export { BlockTerminal } from "./BlockTerminal";
 export { BlockView, BlockList } from "./Block";
-// InputOverlay is available but not used - xterm.js handles all input directly
-// export { InputOverlay } from "./InputOverlay";
+export { BlockGutter } from "./BlockGutter";

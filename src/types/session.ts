@@ -99,6 +99,7 @@ export interface SessionConfig {
 // Block-based terminal types
 export type BlockStatus = "running" | "success" | "error";
 
+// Legacy Block type - kept for migration, prefer BlockMarker
 export interface Block {
   id: string;
   sessionId: string;
@@ -108,4 +109,18 @@ export interface Block {
   output: string;
   collapsed: boolean;
   lineCount: number;
+}
+
+// New marker-based block model - output lives only in xterm.js buffer
+export interface BlockMarker {
+  id: string;
+  sessionId: string;
+  command: string;
+  timestamp: Date;
+  status: BlockStatus;
+  collapsed: boolean;
+
+  // xterm.js line position tracking
+  startLine: number;      // Command starting line in xterm buffer
+  endLine: number | null; // Output ending line (null while running)
 }

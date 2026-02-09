@@ -33,16 +33,20 @@ const ERROR_PATTERNS = [
 
 export interface BlockDetectorState {
   isCapturing: boolean;
-  currentBlockId: string | null;
+  currentMarkerId: string | null;
   currentCommand: string;
   buffer: string;
   lastOutputTime: number;
+  startLine: number;
+  currentLine: number;
 }
 
+// New callback interface - emits line numbers instead of storing output
 export interface BlockDetectorCallbacks {
-  onBlockStart: (command: string) => string; // Returns block ID
-  onBlockOutput: (blockId: string, output: string) => void;
-  onBlockComplete: (blockId: string, status: BlockStatus) => void;
+  onBlockStart: (command: string, startLine: number) => string; // Returns marker ID
+  onBlockComplete: (markerId: string, endLine: number, status: BlockStatus) => void;
+  // Get current line from terminal
+  getCurrentLine: () => number;
 }
 
 export class BlockDetector {
@@ -55,10 +59,12 @@ export class BlockDetector {
     this.callbacks = callbacks;
     this.state = {
       isCapturing: false,
-      currentBlockId: null,
+      currentMarkerId: null,
       currentCommand: "",
       buffer: "",
       lastOutputTime: 0,
+      startLine: 0,
+      currentLine: 0,
     };
   }
 
@@ -78,7 +84,7 @@ export class BlockDetector {
       this.state.currentCommand = this.state.currentCommand.slice(0, -1);
     } else if (data === "\x03") {
       // Ctrl+C - cancel current block
-      if (this.state.isCapturing && this.state.currentBlockId) {
+      if (this.state.isCapturing && this.state.currentMarkerId) {
         this.completeBlock("error");
       }
       this.state.currentCommand = "";
@@ -95,15 +101,15 @@ export class BlockDetector {
    * Process terminal output to detect command completion
    */
   processOutput(data: string): void {
-    if (!this.state.isCapturing || !this.state.currentBlockId) {
+    if (!this.state.isCapturing || !this.state.currentMarkerId) {
       return;
     }
 
     this.state.buffer += data;
     this.state.lastOutputTime = Date.now();
 
-    // Send output to callback
-    this.callbacks.onBlockOutput(this.state.currentBlockId, data);
+    // Update current line position
+    this.state.currentLine = this.callbacks.getCurrentLine();
 
     // Reset completion timeout
     this.resetCompletionTimeout();
@@ -119,17 +125,21 @@ export class BlockDetector {
    */
   private startBlock(command: string): void {
     // Complete any existing block first
-    if (this.state.isCapturing && this.state.currentBlockId) {
+    if (this.state.isCapturing && this.state.currentMarkerId) {
       this.completeBlock("success");
     }
 
-    const blockId = this.callbacks.onBlockStart(command);
+    const startLine = this.callbacks.getCurrentLine();
+    const markerId = this.callbacks.onBlockStart(command, startLine);
+
     this.state = {
       isCapturing: true,
-      currentBlockId: blockId,
+      currentMarkerId: markerId,
       currentCommand: "",
       buffer: "",
       lastOutputTime: Date.now(),
+      startLine,
+      currentLine: startLine,
     };
 
     this.resetCompletionTimeout();
@@ -144,16 +154,19 @@ export class BlockDetector {
       this.completionTimeout = null;
     }
 
-    if (this.state.currentBlockId) {
-      this.callbacks.onBlockComplete(this.state.currentBlockId, status);
+    if (this.state.currentMarkerId) {
+      const endLine = this.callbacks.getCurrentLine();
+      this.callbacks.onBlockComplete(this.state.currentMarkerId, endLine, status);
     }
 
     this.state = {
       isCapturing: false,
-      currentBlockId: null,
+      currentMarkerId: null,
       currentCommand: "",
       buffer: "",
       lastOutputTime: 0,
+      startLine: 0,
+      currentLine: 0,
     };
   }
 
@@ -166,7 +179,7 @@ export class BlockDetector {
     }
 
     this.completionTimeout = setTimeout(() => {
-      if (this.state.isCapturing && this.state.currentBlockId) {
+      if (this.state.isCapturing && this.state.currentMarkerId) {
         // Use timeout-based completion
         const status = this.detectError(this.state.buffer) ? "error" : "success";
         this.completeBlock(status);
@@ -206,6 +219,13 @@ export class BlockDetector {
    */
   isCapturing(): boolean {
     return this.state.isCapturing;
+  }
+
+  /**
+   * Get current marker ID if capturing
+   */
+  getCurrentMarkerId(): string | null {
+    return this.state.currentMarkerId;
   }
 
   /**

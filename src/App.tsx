@@ -1,14 +1,15 @@
 import "./App.css";
 import { useThemeStore } from "./stores/themeStore";
 import { useSessionTreeStore } from "./stores/sessionTreeStore";
+import { useBlockStore } from "./stores/blockStore";
 import { ThemeControls } from "./components/ThemeControls";
-import { TerminalView, BlockTerminal } from "./components/Terminal";
+import { UnifiedTerminal, Outline } from "./components/Terminal";
 import { SessionTree } from "./components/Sidebar";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Protocol } from "./types/session";
 
 function App() {
-  const { opacity, blur, blockMode } = useThemeStore();
+  const { opacity, blur } = useThemeStore();
   const {
     activeSessionId,
     activeNodeId,
@@ -16,6 +17,7 @@ function App() {
     findNodeById,
     connectNode,
   } = useSessionTreeStore();
+  const { activeMarkerId, setActiveMarker } = useBlockStore();
 
   // Quick connect form state
   const [host, setHost] = useState("");
@@ -58,6 +60,15 @@ function App() {
 
   // Get active node info for footer
   const activeNode = activeNodeId ? findNodeById(activeNodeId) : null;
+
+  // Handle marker selection from Outline
+  const handleSelectMarker = useCallback((markerId: string) => {
+    setActiveMarker(markerId);
+    // Clear highlight after 2 seconds
+    setTimeout(() => {
+      setActiveMarker(null);
+    }, 2000);
+  }, [setActiveMarker]);
 
   // Apply dynamic CSS variables based on theme settings
   const dynamicStyles = {
@@ -140,11 +151,10 @@ function App() {
       {/* Terminal - Main Content Area */}
       <main className="terminal">
         {activeSessionId ? (
-          blockMode ? (
-            <BlockTerminal sessionId={activeSessionId} />
-          ) : (
-            <TerminalView sessionId={activeSessionId} />
-          )
+          <UnifiedTerminal
+            sessionId={activeSessionId}
+            activeMarkerId={activeMarkerId}
+          />
         ) : (
           <div className="terminal-placeholder">
             Connect to a server to start a session
@@ -152,10 +162,20 @@ function App() {
         )}
       </main>
 
-      {/* Right Panel */}
+      {/* Right Panel - Outline + Theme */}
       <aside className="panel">
-        <div className="panel-title">Theme</div>
-        <ThemeControls />
+        {activeSessionId ? (
+          <Outline
+            sessionId={activeSessionId}
+            activeMarkerId={activeMarkerId ?? undefined}
+            onSelectMarker={handleSelectMarker}
+          />
+        ) : (
+          <>
+            <div className="panel-title">Theme</div>
+            <ThemeControls />
+          </>
+        )}
       </aside>
 
       {/* Footer */}
