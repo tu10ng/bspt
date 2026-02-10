@@ -112,6 +112,7 @@ bspt/
 │   └── src/
 │       ├── main.rs             # Tauri entry
 │       ├── lib.rs              # Tauri commands & setup
+│       ├── ringbuffer.rs       # Backpressure buffer for high-throughput
 │       ├── session.rs          # Session management with DashMap
 │       ├── ssh.rs              # SSH client (russh)
 │       ├── telnet.rs           # Telnet client with VRP integration
@@ -144,5 +145,5 @@ See `IMPLEMENTATION_PLAN.md` for detailed implementation steps and data structur
 - **Phase 1**: Project Foundation - COMPLETE
 - **Phase 2**: Terminal Core - COMPLETE
 - **Phase 3**: Session Manager - COMPLETE
-- **Phase 4**: Block-Based Terminal - Planned
+- **Phase 4**: Block-Based Terminal - COMPLETE (RingBuffer backpressure done)
 - **Phase 5**: Log Tracer & Code Linkage - Planned

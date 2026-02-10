@@ -80,11 +80,28 @@ Terminal instance state:
 - Terminal dimensions
 - Input history
 
-### blockStore
+### blockStore.ts
 Block-based command/response tracking:
-- Command blocks with timestamps
-- Collapsible output blocks
-- Search/filter state
+
+**State:**
+- `markers`: Record<sessionId, BlockMarker[]> - Command markers with line positions
+- `commandFrequency`: Record<sessionId, Record<command, count>> - Usage frequency
+- `suggestionConfig`: { sortBy, maxSuggestions } - History algorithm config
+
+**Marker Actions:**
+- `createMarker(sessionId, command, startLine)` - Create new command block
+- `completeMarker(markerId, endLine, status)` - Mark block complete
+- `toggleCollapse(markerId)` / `collapseAll` / `expandAll` - Block visibility
+
+**History Suggestion Algorithm:**
+- `getCommandHistory(sessionId)` - Returns deduplicated, sorted command list
+- Sorting strategies (`suggestionConfig.sortBy`):
+  - `"recent"` - Most recently used first (default)
+  - `"frequency"` - Most frequently used first
+  - `"combined"` - Weighted score: recency decay × frequency
+- `setSuggestionSortBy(sortBy)` / `setMaxSuggestions(max)` - Config setters
+
+Persisted to `bspt-markers` in localStorage.
 
 ## IPC Synchronization
 For stores that sync with Rust backend:

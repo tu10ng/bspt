@@ -38,14 +38,25 @@ Tauri commands and app setup:
 - `resize_terminal` - PTY resize (NAWS for Telnet)
 - `scan_boards` - Send `display device` command
 - `set_auto_pagination` - Toggle VRP auto-pagination
+- `notify_buffer_drained` - Frontend signals buffer consumption (backpressure)
 - Window vibrancy setup (Windows-only via `window_vibrancy`)
+
+### ringbuffer.rs
+Backpressure management for high-throughput sessions:
+- `SessionRingBuffer` - VecDeque-based buffer with watermarks
+  - Default capacity: 256KB
+  - High watermark: 80% - pause network reads
+  - Low watermark: 20% - resume network reads
+- `BackpressureController` - Manages pause/resume signaling (utility class)
+- Flow: TCP/SSH Read → Buffer → Tauri emit() → Frontend → drain signal → Resume
 
 ### session.rs
 Session management with DashMap:
 - `SessionManager` - Concurrent session storage
-- `SessionHandle` - Channels for input, shutdown, resize, auto_pagination
+- `SessionHandle` - Channels for input, shutdown, resize, auto_pagination, buffer, drain_tx
 - `SessionConfig` - Host, port, protocol, credentials
 - `SessionState` - Connecting, Connected, Ready, Disconnected, Error
+- `notify_drained()` - Signal frontend has consumed buffer data
 
 ### ssh.rs
 SSH client using `russh`:
@@ -53,6 +64,7 @@ SSH client using `russh`:
 - PTY allocation with xterm-256color
 - Async data flow via Tauri events
 - Window resize support
+- Backpressure: buffers data in SshHandler, signals pause via channel
 
 ### telnet.rs
 Telnet client with VRP integration:
@@ -60,6 +72,7 @@ Telnet client with VRP integration:
 - NAWS (window size) support
 - Terminal type negotiation (xterm-256color)
 - VRP parser integration for Huawei routers
+- Backpressure: pauses TCP reads when buffer exceeds high watermark
 
 ### vrp.rs
 Huawei VRP-specific handling:

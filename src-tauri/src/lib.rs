@@ -1,3 +1,4 @@
+mod ringbuffer;
 mod session;
 mod ssh;
 mod telnet;
@@ -90,6 +91,14 @@ async fn set_auto_pagination(
     state.set_auto_pagination(&session_id, enabled).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn notify_buffer_drained(
+    session_id: String,
+    state: tauri::State<'_, Arc<SessionManager>>,
+) -> Result<(), String> {
+    state.notify_drained(&session_id).await.map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize tracing
@@ -123,7 +132,8 @@ pub fn run() {
             disconnect_session,
             resize_terminal,
             scan_boards,
-            set_auto_pagination
+            set_auto_pagination,
+            notify_buffer_drained
         ]);
 
     builder

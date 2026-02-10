@@ -1,15 +1,19 @@
+use crate::ringbuffer::SessionRingBuffer;
 use crate::session::{SessionConfig, SessionError, SessionHandle, SessionManager, SessionState};
 use async_trait::async_trait;
 use russh::keys::key::PublicKey;
 use russh::{client, ChannelId};
 use std::sync::Arc;
 use tauri::Emitter;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info, warn};
 
 struct SshHandler {
     session_id: String,
     app_handle: tauri::AppHandle,
+    buffer: Arc<Mutex<SessionRingBuffer>>,
+    /// Channel to signal backpressure state to the main loop
+    backpressure_tx: mpsc::Sender<bool>,
 }
 
 #[async_trait]
@@ -41,6 +45,23 @@ impl client::Handler for SshHandler {
             "Received data from SSH"
         );
 
+        // Buffer data with backpressure control
+        {
+            let mut buf = self.buffer.lock().await;
+            buf.push(data);
+
+            // Check if we should pause reads
+            if buf.should_pause() {
+                debug!(
+                    session_id = %self.session_id,
+                    buffer_fill = %buf.fill_percent(),
+                    "Backpressure: signaling SSH pause"
+                );
+                let _ = self.backpressure_tx.send(true).await;
+            }
+        }
+
+        // Emit data to frontend
         if let Err(e) = self.app_handle.emit(&event_name, data.to_vec()) {
             error!(
                 session_id = %self.session_id,
@@ -89,6 +110,11 @@ pub async fn run_ssh_session(
     let (input_tx, mut input_rx) = mpsc::channel::<Vec<u8>>(256);
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
     let (resize_tx, mut resize_rx) = mpsc::channel::<(u32, u32)>(16);
+    let (drain_tx, mut drain_rx) = mpsc::channel::<()>(16);
+    let (backpressure_tx, mut backpressure_rx) = mpsc::channel::<bool>(16);
+
+    // Create ring buffer for backpressure
+    let buffer = Arc::new(Mutex::new(SessionRingBuffer::new(session_id.clone())));
 
     // Store session handle (SSH doesn't use auto_pagination - VRP is telnet-only)
     let handle = SessionHandle {
@@ -99,6 +125,8 @@ pub async fn run_ssh_session(
         shutdown_tx,
         resize_tx,
         auto_pagination_tx: None,
+        buffer: Arc::clone(&buffer),
+        drain_tx,
     };
     manager.insert(handle);
 
@@ -116,6 +144,8 @@ pub async fn run_ssh_session(
     let handler = SshHandler {
         session_id: session_id.clone(),
         app_handle: app_handle.clone(),
+        buffer: Arc::clone(&buffer),
+        backpressure_tx,
     };
 
     // Connect to server
@@ -204,8 +234,33 @@ pub async fn run_ssh_session(
     info!(session_id = %session_id, "SSH session ready");
 
     // Main event loop
+    // Note: SSH backpressure is handled in the SshHandler::data callback.
+    // The backpressure_rx channel is available for future use if we need
+    // to pause the SSH channel at the transport level.
     loop {
         tokio::select! {
+            // Handle drain notification from frontend
+            Some(()) = drain_rx.recv() => {
+                let mut buf = buffer.lock().await;
+                // Clear the buffer since frontend has processed the data
+                buf.drain_all();
+                debug!(
+                    session_id = %session_id,
+                    buffer_fill = %buf.fill_percent(),
+                    "Buffer drained by frontend"
+                );
+            }
+
+            // Handle backpressure signal from SSH handler
+            Some(paused) = backpressure_rx.recv() => {
+                if paused {
+                    debug!(session_id = %session_id, "SSH backpressure: handler signaled pause");
+                    // In SSH, we can't directly pause the channel read like in telnet.
+                    // The buffer will continue accepting data, but the signal is useful
+                    // for monitoring/logging purposes.
+                }
+            }
+
             // Handle input from frontend
             Some(data) = input_rx.recv() => {
                 debug!(session_id = %session_id, bytes = data.len(), "Sending data to SSH");

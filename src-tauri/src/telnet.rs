@@ -1,10 +1,11 @@
+use crate::ringbuffer::SessionRingBuffer;
 use crate::session::{SessionConfig, SessionError, SessionHandle, SessionManager, SessionState};
 use crate::vrp::{VrpEvent, VrpParser};
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, info, warn};
 
 // Telnet protocol constants
@@ -235,6 +236,10 @@ pub async fn run_telnet_session(
     let (shutdown_tx, mut shutdown_rx) = mpsc::channel::<()>(1);
     let (resize_tx, mut resize_rx) = mpsc::channel::<(u32, u32)>(16);
     let (auto_pagination_tx, mut auto_pagination_rx) = mpsc::channel::<bool>(16);
+    let (drain_tx, mut drain_rx) = mpsc::channel::<()>(16);
+
+    // Create ring buffer for backpressure
+    let buffer = Arc::new(Mutex::new(SessionRingBuffer::new(session_id.clone())));
 
     // Store session handle
     let handle = SessionHandle {
@@ -245,6 +250,8 @@ pub async fn run_telnet_session(
         shutdown_tx,
         resize_tx,
         auto_pagination_tx: Some(auto_pagination_tx),
+        buffer: Arc::clone(&buffer),
+        drain_tx,
     };
     manager.insert(handle);
 
@@ -276,10 +283,13 @@ pub async fn run_telnet_session(
     let mut current_cols = config.cols;
     let mut current_rows = config.rows;
 
+    // Backpressure state
+    let mut is_paused = false;
+
     loop {
         tokio::select! {
-            // Read from server
-            result = reader.read(&mut read_buf) => {
+            // Read from server (only if not paused due to backpressure)
+            result = reader.read(&mut read_buf), if !is_paused => {
                 match result {
                     Ok(0) => {
                         info!(session_id = %session_id, "Server closed connection");
@@ -328,8 +338,22 @@ pub async fn run_telnet_session(
                             }
                         }
 
-                        // Forward data to frontend
+                        // Buffer data and emit to frontend with backpressure control
                         if !vrp_data.is_empty() {
+                            let mut buf = buffer.lock().await;
+                            buf.push(&vrp_data);
+
+                            // Check if we should pause reads
+                            if buf.should_pause() {
+                                is_paused = true;
+                                debug!(
+                                    session_id = %session_id,
+                                    buffer_fill = %buf.fill_percent(),
+                                    "Backpressure: pausing Telnet reads"
+                                );
+                            }
+
+                            // Emit data to frontend
                             let event_name = format!("session:{}", session_id);
                             debug!(session_id = %session_id, bytes = vrp_data.len(), "Received data from Telnet");
                             if let Err(e) = app_handle.emit(&event_name, vrp_data) {
@@ -341,6 +365,23 @@ pub async fn run_telnet_session(
                         error!(session_id = %session_id, error = %e, "Read error");
                         break;
                     }
+                }
+            }
+
+            // Handle drain notification from frontend
+            Some(()) = drain_rx.recv() => {
+                let mut buf = buffer.lock().await;
+                // Clear the buffer since frontend has processed the data
+                buf.drain_all();
+
+                // Check if we can resume reads
+                if is_paused && buf.can_resume() {
+                    is_paused = false;
+                    debug!(
+                        session_id = %session_id,
+                        buffer_fill = %buf.fill_percent(),
+                        "Backpressure: resuming Telnet reads"
+                    );
                 }
             }
 

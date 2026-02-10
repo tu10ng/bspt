@@ -378,9 +378,19 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
       updateGhostText();
     });
 
-    // Listen for data from backend
+    // Listen for data from backend with batching for backpressure control
     let unlistenData: UnlistenFn | null = null;
     let unlistenState: UnlistenFn | null = null;
+
+    // Batch processing state
+    let pendingWrites = 0;
+    const BATCH_THRESHOLD = 10; // Notify drain after this many writes
+
+    const notifyDrain = () => {
+      invoke("notify_buffer_drained", { sessionId }).catch((e) => {
+        console.warn("Failed to notify buffer drain:", e);
+      });
+    };
 
     const setupListeners = async () => {
       unlistenData = await listen<number[]>(
@@ -389,6 +399,8 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
           const bytes = new Uint8Array(event.payload);
           const text = new TextDecoder().decode(bytes);
 
+          pendingWrites++;
+
           // Write to terminal, then process for block detection after write completes
           // This ensures the buffer is updated before getCurrentLine() is called
           term.write(bytes, () => {
@@ -396,6 +408,13 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
             // Update ghost text after output is written
             updateGhostText();
             updateCellDimensions();
+
+            // Notify backend that we've processed data (backpressure signal)
+            // Batch notifications to avoid excessive IPC overhead
+            if (pendingWrites >= BATCH_THRESHOLD) {
+              pendingWrites = 0;
+              notifyDrain();
+            }
           });
         }
       );

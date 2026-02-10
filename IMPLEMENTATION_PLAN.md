@@ -362,7 +362,7 @@ Detailed implementation guide for BSPT (Board Support Package Terminal).
 
 ---
 
-## Phase 4: Block-Based Terminal (IN PROGRESS)
+## Phase 4: Block-Based Terminal (COMPLETE)
 
 ### Goals
 - ~~Implement collapsible output blocks~~ → **Overlay-based visual hiding** (see Design Decision below)
@@ -465,12 +465,22 @@ Detailed implementation guide for BSPT (Board Support Package Terminal).
    - Toggle Collapse
    - Collapse All / Expand All
 
-5. **[TODO] Input overlay with autocomplete**
-   - Fish-like command suggestions
-   - History-based completion
+5. **[DONE] Input overlay with autocomplete**
+   - Fish-like command suggestions (inline ghost text)
+   - History-based completion with smart sorting:
+     - `"recent"` - Most recently used first (default)
+     - `"frequency"` - Most frequently used first
+     - `"combined"` - Weighted recency × frequency score
+   - Automatic deduplication
+   - Configurable via `setSuggestionSortBy()` / `setMaxSuggestions()`
 
-6. **[TODO] RingBuffer backpressure**
-   - Rust-side buffer for high-throughput output
+6. **[DONE] RingBuffer backpressure**
+   - `ringbuffer.rs` with SessionRingBuffer (256KB capacity)
+   - Watermark-based flow control (80% pause, 20% resume)
+   - Integrated into telnet.rs (pauses TCP reads when buffer full)
+   - Integrated into ssh.rs (buffer + backpressure signaling)
+   - Frontend batch processing with drain notifications
+   - `notify_buffer_drained` Tauri command for frontend → backend signal
 
 ### Deprecated Components
 
@@ -480,7 +490,8 @@ Detailed implementation guide for BSPT (Board Support Package Terminal).
 - [x] Commands appear as blocks (with gutter markers)
 - [x] Blocks collapse/expand on click (overlay-based)
 - [x] Status gutter shows correct color
-- [ ] Autocomplete shows history suggestions
+- [x] Autocomplete shows history suggestions (deduplicated, configurable sorting)
+- [x] RingBuffer backpressure implemented (256KB, 80%/20% watermarks)
 - [ ] 100k+ lines don't cause UI freeze (needs stress test)
 
 ---
@@ -742,5 +753,6 @@ while True:
 | 2 | SSH/Telnet connection | Real server echo works | PASS |
 | 3 | Tree operations | Add/remove/switch persists, VRP pagination | PASS |
 | 4 | Block overlay | Collapse/expand works, gutter synced | PASS |
+| 4 | RingBuffer | Backpressure pauses/resumes reads | PASS |
 | 4 | Stress test | 100k lines, no freeze | TODO |
 | 5 | Log matching | Index C project, link works | - |

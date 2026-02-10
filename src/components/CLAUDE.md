@@ -100,9 +100,13 @@ Collapsible command/response blocks:
 
 ### Terminal/InputOverlay.tsx
 Fish-like command input:
-- Floating input field
-- History-based autocomplete
-- VRP command suggestions
+- Floating input field with inline ghost text suggestions
+- History-based autocomplete with smart sorting:
+  - Recent (default), frequency, or combined scoring
+  - Automatic deduplication
+  - Configurable via blockStore
+- Tab/Right-arrow to accept suggestion
+- VRP command suggestions (planned)
 
 ### Panel/FlowPanel.tsx
 React Flow visualization for log tracing:

@@ -1,9 +1,10 @@
+use crate::ringbuffer::SessionRingBuffer;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::AppHandle;
 use thiserror::Error;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Mutex};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +66,10 @@ pub struct SessionHandle {
     pub shutdown_tx: mpsc::Sender<()>,
     pub resize_tx: mpsc::Sender<(u32, u32)>,
     pub auto_pagination_tx: Option<mpsc::Sender<bool>>,
+    /// Ring buffer for backpressure management
+    pub buffer: Arc<Mutex<SessionRingBuffer>>,
+    /// Channel to signal buffer drain from frontend
+    pub drain_tx: mpsc::Sender<()>,
 }
 
 pub struct SessionManager {
@@ -155,5 +160,19 @@ impl SessionManager {
                 .map_err(|e| SessionError::ChannelError(e.to_string()))?;
         }
         Ok(())
+    }
+
+    /// Notify the session that the frontend has drained buffer data.
+    /// This signals the read loop to check if it can resume reading.
+    pub async fn notify_drained(&self, session_id: &str) -> Result<(), SessionError> {
+        let handle = self
+            .get(session_id)
+            .ok_or_else(|| SessionError::NotFound(session_id.to_string()))?;
+
+        handle
+            .drain_tx
+            .send(())
+            .await
+            .map_err(|e| SessionError::ChannelError(e.to_string()))
     }
 }
