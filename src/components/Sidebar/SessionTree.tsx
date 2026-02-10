@@ -1,7 +1,8 @@
 import { useState, useCallback } from "react";
 import { Tree, NodeRendererProps } from "react-arborist";
-import { TreeNodeData, RouterNode } from "../../types/session";
+import { TreeNodeData, RouterNode, LinuxBoardNode } from "../../types/session";
 import { useSessionTreeStore } from "../../stores/sessionTreeStore";
+import { useTabStore } from "../../stores/tabStore";
 import { TreeContextMenu } from "./TreeContextMenu";
 
 interface ContextMenuState {
@@ -10,7 +11,8 @@ interface ContextMenuState {
 }
 
 function NodeRenderer({ node, style, dragHandle }: NodeRendererProps<TreeNodeData>) {
-  const { activeNodeId, setActiveNode, connectNode } = useSessionTreeStore();
+  const { activeNodeId, setActiveNode, connectNode, findNodeById } = useSessionTreeStore();
+  const { openTab, setActiveTab, getTabByNodeId } = useTabStore();
   const nodeData = node.data.nodeData;
   const isRouter = nodeData.type === "router";
   const isActive = activeNodeId === nodeData.id;
@@ -62,11 +64,42 @@ function NodeRenderer({ node, style, dragHandle }: NodeRendererProps<TreeNodeDat
 
   const handleClick = () => {
     setActiveNode(nodeData.id);
+    // If already has a tab, switch to it
+    const existingTab = getTabByNodeId(nodeData.id);
+    if (existingTab) {
+      setActiveTab(existingTab.id);
+    }
   };
 
-  const handleDoubleClick = () => {
+  const handleDoubleClick = async () => {
+    // Check if already has a tab
+    const existingTab = getTabByNodeId(nodeData.id);
+    if (existingTab) {
+      // Just switch to the existing tab
+      setActiveTab(existingTab.id);
+      return;
+    }
+
+    // If not connected, connect first
     if (nodeData.connectionState === "disconnected" || nodeData.connectionState === "error") {
-      connectNode(nodeData.id);
+      await connectNode(nodeData.id);
+    }
+
+    // Get the updated node to get session ID
+    const updatedNode = findNodeById(nodeData.id);
+    if (updatedNode && updatedNode.sessionId) {
+      // Create label based on node type
+      let label: string;
+      if (updatedNode.type === "router") {
+        const router = updatedNode as RouterNode;
+        label = `${router.mgmtIp}:${router.port}`;
+      } else {
+        const board = updatedNode as LinuxBoardNode;
+        label = board.name || board.ip;
+      }
+
+      // Open a new tab
+      openTab(nodeData.id, updatedNode.sessionId, label, updatedNode.protocol);
     }
   };
 
@@ -94,7 +127,8 @@ function NodeRenderer({ node, style, dragHandle }: NodeRendererProps<TreeNodeDat
 }
 
 export function SessionTree() {
-  const { getTreeData, connectNode } = useSessionTreeStore();
+  const { getTreeData, connectNode, findNodeById } = useSessionTreeStore();
+  const { openTab, setActiveTab, getTabByNodeId } = useTabStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   const treeData = getTreeData();
@@ -115,21 +149,44 @@ export function SessionTree() {
     setContextMenu(null);
   }, []);
 
-  // Handle double-click on empty area (from react-arborist)
+  // Handle double-click / activate (from react-arborist)
   const handleActivate = useCallback(
-    (node: { data: TreeNodeData }) => {
+    async (node: { data: TreeNodeData }) => {
       const nodeData = node.data.nodeData;
+
+      // Check if already has a tab
+      const existingTab = getTabByNodeId(nodeData.id);
+      if (existingTab) {
+        setActiveTab(existingTab.id);
+        return;
+      }
+
+      // Connect if needed
       if (nodeData.connectionState === "disconnected" || nodeData.connectionState === "error") {
-        connectNode(nodeData.id);
+        await connectNode(nodeData.id);
+      }
+
+      // Get updated node
+      const updatedNode = findNodeById(nodeData.id);
+      if (updatedNode && updatedNode.sessionId) {
+        let label: string;
+        if (updatedNode.type === "router") {
+          const router = updatedNode as RouterNode;
+          label = `${router.mgmtIp}:${router.port}`;
+        } else {
+          const board = updatedNode as LinuxBoardNode;
+          label = board.name || board.ip;
+        }
+        openTab(nodeData.id, updatedNode.sessionId, label, updatedNode.protocol);
       }
     },
-    [connectNode]
+    [connectNode, findNodeById, getTabByNodeId, openTab, setActiveTab]
   );
 
   if (treeData.length === 0) {
     return (
       <div className="session-tree-empty">
-        No routers configured. Use the form above to add one.
+        No routers configured. Enter connection details above.
       </div>
     );
   }

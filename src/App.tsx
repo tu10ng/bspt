@@ -2,67 +2,29 @@ import "./App.css";
 import { useThemeStore } from "./stores/themeStore";
 import { useSessionTreeStore } from "./stores/sessionTreeStore";
 import { useBlockStore } from "./stores/blockStore";
+import { useTabStore } from "./stores/tabStore";
 import { ThemeControls } from "./components/ThemeControls";
-import { UnifiedTerminal, Outline } from "./components/Terminal";
-import { SessionTree } from "./components/Sidebar";
+import { Outline, TerminalArea } from "./components/Terminal";
+import { SessionTree, QuickAddInput } from "./components/Sidebar";
+import { CommandBar } from "./components/CommandBar";
 import { FlowPanel } from "./components/Panel";
 import { useState, useCallback } from "react";
-import { Protocol } from "./types/session";
 import { useTracerStore } from "./stores/tracerStore";
 
 function App() {
   const { opacity, blur } = useThemeStore();
-  const {
-    activeSessionId,
-    activeNodeId,
-    addRouter,
-    findNodeById,
-    connectNode,
-  } = useSessionTreeStore();
+  const { findNodeById } = useSessionTreeStore();
   const { activeMarkerId, setActiveMarker } = useBlockStore();
+  const { tabs, activeTabId } = useTabStore();
   const { traceEvents, indexDirectory, indexed, indexing, sourcePath } = useTracerStore();
 
   // Panel mode state
   const [panelMode, setPanelMode] = useState<"outline" | "flow">("outline");
 
-  // Quick connect form state
-  const [host, setHost] = useState("");
-  const [port, setPort] = useState("22");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [protocol, setProtocol] = useState<Protocol>("ssh");
-  const [isConnecting, setIsConnecting] = useState(false);
-
-  const handleConnect = async () => {
-    if (!host || !username) return;
-
-    setIsConnecting(true);
-    try {
-      // Add router to tree
-      const routerId = addRouter({
-        name: `${host}:${port}`,
-        mgmtIp: host,
-        port: parseInt(port) || (protocol === "ssh" ? 22 : 23),
-        protocol,
-        authProfileId: null,
-        username,
-        password,
-      });
-
-      // Connect to the new router
-      await connectNode(routerId);
-
-      // Clear form
-      setHost("");
-      setPort(protocol === "ssh" ? "22" : "23");
-      setUsername("");
-      setPassword("");
-    } catch (error) {
-      console.error("Failed to create session:", error);
-    } finally {
-      setIsConnecting(false);
-    }
-  };
+  // Get active tab and session info
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const activeSessionId = activeTab?.sessionId || null;
+  const activeNodeId = activeTab?.nodeId || null;
 
   // Get active node info for footer
   const activeNode = activeNodeId ? findNodeById(activeNodeId) : null;
@@ -96,76 +58,16 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-title">Sessions</div>
 
-        {/* Quick Connect Form */}
-        <div className="quick-connect">
-          <input
-            type="text"
-            placeholder="Host"
-            value={host}
-            onChange={(e) => setHost(e.target.value)}
-            className="input-field"
-          />
-          <input
-            type="text"
-            placeholder="Port"
-            value={port}
-            onChange={(e) => setPort(e.target.value)}
-            className="input-field"
-          />
-          <input
-            type="text"
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="input-field"
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="input-field"
-          />
-          <select
-            value={protocol}
-            onChange={(e) => {
-              const newProtocol = e.target.value as Protocol;
-              setProtocol(newProtocol);
-              // Auto-update port when switching protocol
-              if (port === "22" || port === "23") {
-                setPort(newProtocol === "ssh" ? "22" : "23");
-              }
-            }}
-            className="input-field"
-          >
-            <option value="ssh">SSH</option>
-            <option value="telnet">Telnet</option>
-          </select>
-          <button
-            onClick={handleConnect}
-            disabled={isConnecting || !host || !username}
-            className="connect-button"
-          >
-            {isConnecting ? "Connecting..." : "Connect"}
-          </button>
-        </div>
+        {/* Quick Add Input - compact connection input */}
+        <QuickAddInput />
 
         {/* Session Tree */}
         <SessionTree />
       </aside>
 
-      {/* Terminal - Main Content Area */}
+      {/* Terminal - Main Content Area with TabBar */}
       <main className="terminal">
-        {activeSessionId ? (
-          <UnifiedTerminal
-            sessionId={activeSessionId}
-            activeMarkerId={activeMarkerId}
-          />
-        ) : (
-          <div className="terminal-placeholder">
-            Connect to a server to start a session
-          </div>
-        )}
+        <TerminalArea activeMarkerId={activeMarkerId} />
       </main>
 
       {/* Right Panel - Outline / Traces / Theme */}
@@ -232,6 +134,9 @@ function App() {
           </>
         )}
       </aside>
+
+      {/* CommandBar - Quick commands and clipboard */}
+      <CommandBar />
 
       {/* Footer */}
       <footer className="footer">

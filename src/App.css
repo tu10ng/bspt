@@ -1,11 +1,12 @@
-/* 3x3 CSS Grid Layout */
+/* 3x3 CSS Grid Layout with CommandBar */
 .app-grid {
   display: grid;
   grid-template-columns: 250px 1fr 300px;
-  grid-template-rows: 40px 1fr 32px;
+  grid-template-rows: 40px 1fr 36px 32px;
   grid-template-areas:
     "header header header"
     "sidebar terminal panel"
+    "sidebar commandbar panel"
     "footer footer footer";
   height: 100vh;
   width: 100vw;
@@ -1225,4 +1226,452 @@
 .panel-tab-active:hover {
   background: var(--color-accent-primary, #50fa7b);
   color: #000;
+}
+
+/* ========================================
+   TabBar Styles (Chrome-style tabs)
+   ======================================== */
+
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 8px 0;
+  background: rgba(18, 18, 18, 0.6);
+  border-bottom: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.tab-bar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.tab-bar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tab-bar::-webkit-scrollbar-thumb {
+  background: var(--color-surface-tertiary, #333);
+  border-radius: 2px;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--color-surface-secondary, #1e1e1e);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  user-select: none;
+  min-width: 100px;
+  max-width: 180px;
+  transition: all 0.15s;
+}
+
+.tab-item:hover {
+  background: var(--color-surface-tertiary, #2a2a2a);
+}
+
+.tab-active {
+  background: rgba(0, 0, 0, 0.5) !important;
+  border-color: var(--color-glass-border, rgba(255, 255, 255, 0.1));
+}
+
+.tab-dragging {
+  opacity: 0.5;
+}
+
+.tab-drop-target {
+  border-left: 2px solid var(--color-accent-primary, #50fa7b);
+}
+
+.tab-protocol {
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.tab-label {
+  flex: 1;
+  font-size: 12px;
+  color: var(--color-text-primary, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-close {
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--color-text-muted, #888);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.tab-item:hover .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: rgba(255, 85, 85, 0.2);
+  color: #ff5555;
+}
+
+/* ========================================
+   TerminalArea Styles
+   ======================================== */
+
+.terminal-area-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.terminal-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ========================================
+   CommandBar Styles
+   ======================================== */
+
+.command-bar {
+  grid-area: commandbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  background: rgba(18, 18, 18, var(--dynamic-opacity, 0.8));
+  backdrop-filter: blur(var(--dynamic-blur, 12px));
+  -webkit-backdrop-filter: blur(var(--dynamic-blur, 12px));
+  border-top: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  gap: 8px;
+}
+
+.quick-commands {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.quick-command-btn {
+  padding: 4px 10px;
+  background: var(--color-surface-tertiary, #2a2a2a);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-primary, #fff);
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.quick-command-btn:hover:not(:disabled) {
+  background: var(--color-accent-primary, #50fa7b);
+  color: #000;
+  border-color: var(--color-accent-primary, #50fa7b);
+}
+
+.quick-command-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Clipboard Section */
+.clipboard-section {
+  position: relative;
+}
+
+.clipboard-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--color-surface-tertiary, #2a2a2a);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-primary, #fff);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.clipboard-toggle:hover:not(:disabled) {
+  background: var(--color-surface-primary, #333);
+}
+
+.clipboard-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.clipboard-icon {
+  font-size: 14px;
+}
+
+.clipboard-badge {
+  font-size: 10px;
+  background: var(--color-accent-primary, #50fa7b);
+  color: #000;
+  padding: 1px 5px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.clipboard-dropdown {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 4px;
+  width: 280px;
+  max-height: 300px;
+  background: var(--color-surface-primary, #1e1e1e);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.clipboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary, #888);
+  text-transform: uppercase;
+}
+
+.clipboard-clear {
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #ff5555;
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.clipboard-clear:hover {
+  background: rgba(255, 85, 85, 0.2);
+}
+
+.clipboard-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--color-text-muted, #666);
+  font-size: 12px;
+}
+
+.clipboard-menu {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.clipboard-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.clipboard-item:hover {
+  background: var(--color-surface-tertiary, #2a2a2a);
+}
+
+.clipboard-text {
+  flex: 1;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--color-text-primary, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clipboard-time {
+  font-size: 10px;
+  color: var(--color-text-muted, #666);
+  flex-shrink: 0;
+}
+
+.clipboard-remove {
+  padding: 2px 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--color-text-muted, #666);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.clipboard-item:hover .clipboard-remove {
+  opacity: 1;
+}
+
+.clipboard-remove:hover {
+  background: rgba(255, 85, 85, 0.2);
+  color: #ff5555;
+}
+
+/* ========================================
+   QuickAddInput Styles
+   ======================================== */
+
+.quick-add-input {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.quick-add-field-wrapper {
+  display: flex;
+  gap: 4px;
+}
+
+.quick-add-field {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--color-surface-tertiary, #2a2a2a);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-primary, #fff);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.quick-add-field:focus {
+  border-color: var(--color-accent-primary, #50fa7b);
+}
+
+.quick-add-field::placeholder {
+  color: var(--color-text-muted, #666);
+}
+
+.quick-add-btn {
+  padding: 8px 12px;
+  background: var(--color-accent-primary, #50fa7b);
+  border: none;
+  border-radius: 4px;
+  color: #000;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.quick-add-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.quick-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quick-add-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--color-surface-primary, #1e1e1e);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  z-index: 100;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.quick-add-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.quick-add-suggestion:hover,
+.quick-add-suggestion.selected {
+  background: var(--color-surface-tertiary, #2a2a2a);
+}
+
+.quick-add-suggestion.connected {
+  background: rgba(80, 250, 123, 0.1);
+}
+
+.suggestion-status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.suggestion-label {
+  flex: 1;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--color-text-primary, #fff);
+}
+
+.suggestion-protocol {
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.quick-add-preview {
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: var(--color-surface-secondary, #1e1e1e);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+}
+
+.preview-user {
+  color: var(--color-text-secondary, #888);
+}
+
+.preview-host {
+  color: var(--color-text-primary, #fff);
+  font-weight: 500;
+}
+
+.preview-port {
+  color: var(--color-text-muted, #666);
+}
+
+.preview-protocol {
+  margin-left: 8px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
 }

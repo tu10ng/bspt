@@ -10,6 +10,7 @@ import "@xterm/xterm/css/xterm.css";
 import { useThemeStore } from "../../stores/themeStore";
 import { useBlockStore } from "../../stores/blockStore";
 import { useTracerStore } from "../../stores/tracerStore";
+import { useCommandBarStore } from "../../stores/commandBarStore";
 import { BlockDetector } from "../../utils/blockDetector";
 import { useGutterSync, getCurrentBufferLine, useCollapsedRanges } from "../../hooks";
 import { GutterOverlay } from "./GutterOverlay";
@@ -42,6 +43,9 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
   } = useBlockStore();
 
   const markers = getSessionMarkers(sessionId);
+
+  // Clipboard history for CommandBar
+  const addClipboardEntry = useCommandBarStore((s) => s.addClipboardEntry);
 
   // Tracer for log-to-source mapping
   const matchLine = useTracerStore((s) => s.matchLine);
@@ -382,6 +386,24 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
       updateGhostText();
     });
 
+    // Track selection changes and capture to clipboard history when copied
+    const selectionDisposable = term.onSelectionChange(() => {
+      // onSelectionChange fires when selection changes, not when copied
+      // We need to use the copy handler instead
+    });
+
+    // Listen for Ctrl+C to capture clipboard when copying from terminal
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+C or Cmd+C when there's a selection (copy)
+      if ((e.ctrlKey || e.metaKey) && e.key === "c" && term.hasSelection()) {
+        const selectedText = term.getSelection();
+        if (selectedText) {
+          addClipboardEntry(selectedText);
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+
     // Listen for data from backend with batching for backpressure control
     let unlistenData: UnlistenFn | null = null;
     let unlistenState: UnlistenFn | null = null;
@@ -461,6 +483,8 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     return () => {
       inputDisposable.dispose();
       cursorDisposable.dispose();
+      selectionDisposable.dispose();
+      document.removeEventListener("keydown", handleKeyDown);
       resizeObserver.disconnect();
       unlistenData?.();
       unlistenState?.();
@@ -475,6 +499,7 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     completeMarker,
     getCommandHistory,
     matchLine,
+    addClipboardEntry,
   ]);
 
   // Context menu actions

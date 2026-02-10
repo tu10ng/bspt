@@ -772,24 +772,6 @@ while True:
 
 **应用场景**: BSP 开发者终端，内网环境，主要连接华为 VRP 路由器和 Linux 开发板。
 
-### Phase 6: Connection Reliability [P0]
-- 自动重连 (指数退避，适应开发板重启)
-- TCP Keepalive (Telnet)
-- 重连状态 UI
-- 会话状态快照 (可选)
-
-### Phase 7: Multi-Terminal Support [P0]
-- 标签页系统
-- 水平/垂直分屏
-- 焦点管理 (Alt+Arrow)
-- 广播输入模式 (同时操作多个单板)
-- 布局保存/恢复
-
-### Phase 8: Session Logging [P1]
-- 会话自动日志
-- 日志格式选择 (Raw/Plain/Timestamped)
-- 日志轮转
-- 日志导出
 
 ### Phase 9: Serial Connection [P1]
 - 串口枚举
