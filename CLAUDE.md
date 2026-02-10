@@ -146,4 +146,21 @@ See `IMPLEMENTATION_PLAN.md` for detailed implementation steps and data structur
 - **Phase 2**: Terminal Core - COMPLETE
 - **Phase 3**: Session Manager - COMPLETE
 - **Phase 4**: Block-Based Terminal - COMPLETE (RingBuffer backpressure done)
-- **Phase 5**: Log Tracer & Code Linkage - Planned
+- **Phase 5**: Log Tracer & Code Linkage - COMPLETE
+
+### Upcoming Phases (see `docs/FEATURES.md`)
+
+> 应用场景: BSP 开发者终端，内网环境，连接华为 VRP 路由器和 Linux 开发板
+
+- **Phase 6** [P0]: Connection Reliability (auto-reconnect, TCP keepalive)
+- **Phase 7** [P0]: Multi-Terminal Support (tabs, split panes, broadcast input)
+- **Phase 8** [P1]: Session Logging (file logging, rotation)
+- **Phase 9** [P1]: Serial Connection (板端调试)
+- **Phase 10** [P2]: File Transfer (SFTP upload/download)
+- **Phase 11** [P2]: VRP Enhancement (command completion)
+- **Phase 12** [P3]: Configuration System (TOML config, keybindings)
+
+## Documentation
+
+- `IMPLEMENTATION_PLAN.md` - Phase 1-5 implementation details
+- `docs/FEATURES.md` - Complete feature list, gap analysis, and roadmap

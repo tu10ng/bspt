@@ -11,12 +11,10 @@ use std::path::Path;
 use std::sync::LazyLock;
 use thiserror::Error;
 use tracing::{debug, info, warn};
-use tree_sitter::{Language, Parser, Query, QueryCursor};
+use streaming_iterator::StreamingIterator;
+use tree_sitter::{Parser, Query, QueryCursor};
 use walkdir::WalkDir;
 
-extern "C" {
-    fn tree_sitter_c() -> Language;
-}
 
 #[derive(Error, Debug)]
 pub enum TracerError {
@@ -109,7 +107,7 @@ impl LogTracer {
 
         // Create tree-sitter parser
         let mut parser = Parser::new();
-        let language = unsafe { tree_sitter_c() };
+        let language = tree_sitter_c::LANGUAGE.into();
         parser
             .set_language(&language)
             .map_err(|e| TracerError::TreeSitterError(e.to_string()))?;
@@ -173,9 +171,9 @@ impl LogTracer {
 
             // Extract format strings
             let mut cursor = QueryCursor::new();
-            let matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
+            let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
 
-            for m in matches {
+            while let Some(m) = matches.next() {
                 let mut func_name = String::new();
                 let mut format_string = String::new();
                 let mut line = 0u32;

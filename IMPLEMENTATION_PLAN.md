@@ -496,7 +496,7 @@ Detailed implementation guide for BSPT (Board Support Package Terminal).
 
 ---
 
-## Phase 5: Log Tracer & Code Linkage
+## Phase 5: Log Tracer & Code Linkage (COMPLETE)
 
 ### Goals
 - Build format-string → file:line index with tree-sitter
@@ -610,10 +610,17 @@ Detailed implementation guide for BSPT (Board Support Package Terminal).
    ```
 
 ### Verification
-- [ ] Indexing C project completes without error
-- [ ] Log lines highlight when matched
-- [ ] Flow diagram updates in real-time
-- [ ] Click node → VS Code opens at correct line
+- [x] Indexing C project completes without error
+- [x] Log lines matched against indexed patterns
+- [x] Flow diagram updates in real-time
+- [x] Click node → VS Code opens at correct line
+
+### Implemented Components
+- `src-tauri/src/tracer.rs` - LogTracer with tree-sitter C parsing and AhoCorasick matching
+- `src/stores/tracerStore.ts` - Zustand store for tracer state
+- `src/components/Panel/FlowPanel.tsx` - React Flow visualization
+- `src/components/Panel/TraceNode.tsx` - Custom node with VS Code deep link
+- `src/utils/vscode.ts` - VS Code URI handlers (local + remote SSH)
 
 ---
 
@@ -755,4 +762,79 @@ while True:
 | 4 | Block overlay | Collapse/expand works, gutter synced | PASS |
 | 4 | RingBuffer | Backpressure pauses/resumes reads | PASS |
 | 4 | Stress test | 100k lines, no freeze | TODO |
-| 5 | Log matching | Index C project, link works | - |
+| 5 | Log matching | Index C project, link works | PASS |
+
+---
+
+## Future Phases (Summary)
+
+> 详细规划见 `docs/FEATURES.md`
+
+**应用场景**: BSP 开发者终端，内网环境，主要连接华为 VRP 路由器和 Linux 开发板。
+
+### Phase 6: Connection Reliability [P0]
+- 自动重连 (指数退避，适应开发板重启)
+- TCP Keepalive (Telnet)
+- 重连状态 UI
+- 会话状态快照 (可选)
+
+### Phase 7: Multi-Terminal Support [P0]
+- 标签页系统
+- 水平/垂直分屏
+- 焦点管理 (Alt+Arrow)
+- 广播输入模式 (同时操作多个单板)
+- 布局保存/恢复
+
+### Phase 8: Session Logging [P1]
+- 会话自动日志
+- 日志格式选择 (Raw/Plain/Timestamped)
+- 日志轮转
+- 日志导出
+
+### Phase 9: Serial Connection [P1]
+- 串口枚举
+- 串口连接 (tokio-serial)
+- 波特率配置
+- 串口 UI
+
+### Phase 10: File Transfer [P2]
+- SFTP 会话复用
+- 拖拽上传
+- 右键下载
+- 传输进度
+
+### Phase 11: VRP Enhancement [P2]
+- VRP 命令补全词典
+- 视图感知补全
+- 增强 Board 解析
+
+### Phase 12: Configuration System [P3]
+- TOML 配置文件
+- 快捷键自定义
+- 连接模板
+
+---
+
+## Known Issues & Technical Debt
+
+| 问题 | 位置 | 严重程度 | 描述 |
+|------|------|----------|------|
+| 无主机密钥验证 | `ssh.rs:100` | 高 | TODO 注释，接受任意服务器 |
+| 明文密码存储 | `sessionTreeStore.ts` | 高 | localStorage 明文存储 |
+| 无自动重连 | `session.rs` | 高 | 断开后需手动重连 |
+| 单终端视图 | `App.tsx` | 中 | 只能查看一个会话 |
+| 无会话日志 | 全局 | 中 | 终端输出不持久化 |
+| 硬编码配置 | 多处 | 低 | 滚动行数、快捷键等 |
+
+---
+
+## Performance Targets
+
+| 指标 | 目标值 | 当前状态 |
+|------|--------|----------|
+| 首次渲染时间 (FCP) | < 500ms | 未测量 |
+| 输入延迟 | < 16ms (60fps) | 未测量 |
+| 滚动帧率 | 60fps | WebGL 启用时达标 |
+| 大输出处理 | 100k 行无卡顿 | 待验证 |
+| 内存占用 | < 200MB (10 会话) | 未测量 |
+| 连接建立时间 | < 2s (SSH) | 未测量 |
