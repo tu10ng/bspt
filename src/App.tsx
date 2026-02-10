@@ -142,13 +142,13 @@ function App() {
       <footer className="footer">
         <div className="footer-left">
           <span>
-            {activeNode
+            {activeNode && activeNode.type !== "folder"
               ? activeNode.connectionState
               : "No session"}
           </span>
         </div>
         <div className="footer-right">
-          <span>{activeNode ? activeNode.protocol.toUpperCase() : "-"}</span>
+          <span>{activeNode && activeNode.type !== "folder" ? activeNode.protocol.toUpperCase() : "-"}</span>
           <span>UTF-8</span>
         </div>
       </footer>

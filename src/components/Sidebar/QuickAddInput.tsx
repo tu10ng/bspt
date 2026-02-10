@@ -149,7 +149,7 @@ export function QuickAddInput({ onConnect }: QuickAddInputProps) {
       const waitForSession = async (maxAttempts = 10): Promise<string | null> => {
         for (let i = 0; i < maxAttempts; i++) {
           const node = findNodeById(routerId);
-          if (node && node.sessionId) {
+          if (node && node.type !== "folder" && node.sessionId) {
             return node.sessionId;
           }
           await new Promise((r) => setTimeout(r, 100));
@@ -182,40 +182,29 @@ export function QuickAddInput({ onConnect }: QuickAddInputProps) {
     async (session: (typeof existingSessions)[0]) => {
       setIsConnecting(true);
       try {
-        // Check if already connected
-        if (session.node.sessionId) {
-          // Just open a tab
+        // Always create a new connection - each selection creates a new tab
+        await connectNode(session.nodeId);
+
+        // Wait for session ID to be available
+        const waitForSession = async (maxAttempts = 10): Promise<string | null> => {
+          for (let i = 0; i < maxAttempts; i++) {
+            const node = findNodeById(session.nodeId);
+            if (node && node.type !== "folder" && node.sessionId) {
+              return node.sessionId;
+            }
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          return null;
+        };
+
+        const sessionId = await waitForSession();
+        if (sessionId) {
           openTab(
             session.nodeId,
-            session.node.sessionId,
+            sessionId,
             session.label,
             session.node.protocol
           );
-        } else {
-          // Connect first
-          await connectNode(session.nodeId);
-
-          // Wait for session ID to be available
-          const waitForSession = async (maxAttempts = 10): Promise<string | null> => {
-            for (let i = 0; i < maxAttempts; i++) {
-              const node = findNodeById(session.nodeId);
-              if (node && node.sessionId) {
-                return node.sessionId;
-              }
-              await new Promise((r) => setTimeout(r, 100));
-            }
-            return null;
-          };
-
-          const sessionId = await waitForSession();
-          if (sessionId) {
-            openTab(
-              session.nodeId,
-              sessionId,
-              session.label,
-              session.node.protocol
-            );
-          }
         }
 
         setInput("");

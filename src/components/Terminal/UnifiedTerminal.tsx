@@ -12,7 +12,8 @@ import { useBlockStore } from "../../stores/blockStore";
 import { useTracerStore } from "../../stores/tracerStore";
 import { useCommandBarStore } from "../../stores/commandBarStore";
 import { BlockDetector } from "../../utils/blockDetector";
-import { useGutterSync, getCurrentBufferLine, useCollapsedRanges } from "../../hooks";
+import { useGutterSync, getCurrentBufferLine, useCollapsedRanges, useTerminalPool } from "../../hooks";
+import type { TerminalInstance } from "../../hooks";
 import { GutterOverlay } from "./GutterOverlay";
 import { InlineGhostText } from "./InlineGhostText";
 
@@ -28,6 +29,13 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const detectorRef = useRef<BlockDetector | null>(null);
   const ghostTextRef = useRef<string>("");
+
+  // Track last sent dimensions to avoid duplicate resize calls
+  const lastDimensionsRef = useRef<{ cols: number; rows: number } | null>(null);
+  const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Terminal pool for instance persistence across tab switches
+  const pool = useTerminalPool();
 
   const { fontFamily } = useThemeStore();
   const {
@@ -77,16 +85,46 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
   }, [ghostText]);
 
   const handleResize = useCallback(() => {
-    if (!fitAddonRef.current || !terminalRef.current) return;
+    if (!fitAddonRef.current || !terminalRef.current || !containerRef.current) return;
+
+    // Skip resize if container is hidden (display: none) or too small
+    const rect = containerRef.current.getBoundingClientRect();
+    if (rect.width < 50 || rect.height < 50) {
+      return;
+    }
 
     fitAddonRef.current.fit();
     const { cols, rows } = terminalRef.current;
 
-    invoke("resize_terminal", {
-      sessionId,
-      cols,
-      rows,
-    }).catch(console.error);
+    // Skip sending tiny dimensions to backend
+    if (cols < 20 || rows < 5) {
+      return;
+    }
+
+    // Skip if dimensions haven't changed
+    const last = lastDimensionsRef.current;
+    if (last && last.cols === cols && last.rows === rows) {
+      return;
+    }
+
+    // Debounce: clear pending timeout and set new one
+    if (resizeTimeoutRef.current) {
+      clearTimeout(resizeTimeoutRef.current);
+    }
+
+    resizeTimeoutRef.current = setTimeout(() => {
+      // Double-check dimensions are still the same
+      if (!terminalRef.current) return;
+      const { cols: currentCols, rows: currentRows } = terminalRef.current;
+
+      lastDimensionsRef.current = { cols: currentCols, rows: currentRows };
+
+      invoke("resize_terminal", {
+        sessionId,
+        cols: currentCols,
+        rows: currentRows,
+      }).catch(console.error);
+    }, 100);
   }, [sessionId]);
 
   const handleMarkerToggle = useCallback(
@@ -233,86 +271,142 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     }
   }, [contextMenu, closeContextMenu]);
 
-  // Initialize terminal
+  // Initialize terminal with pool-based instance management
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Create terminal with transparent background
-    const term = new Terminal({
-      allowTransparency: true,
-      theme: {
-        background: "#00000000",
-        foreground: "#e0e0e0",
-        cursor: "#ffffff",
-        cursorAccent: "#000000",
-        selectionBackground: "#ffffff40",
-        black: "#000000",
-        red: "#ff5555",
-        green: "#50fa7b",
-        yellow: "#f1fa8c",
-        blue: "#6272a4",
-        magenta: "#ff79c6",
-        cyan: "#8be9fd",
-        white: "#f8f8f2",
-        brightBlack: "#6272a4",
-        brightRed: "#ff6e6e",
-        brightGreen: "#69ff94",
-        brightYellow: "#ffffa5",
-        brightBlue: "#d6acff",
-        brightMagenta: "#ff92df",
-        brightCyan: "#a4ffff",
-        brightWhite: "#ffffff",
-      },
-      fontFamily: fontFamily,
-      fontSize: 14,
-      cursorBlink: true,
-      cursorStyle: "block",
-      scrollback: 10000,
-    });
+    let term: Terminal;
+    let detector: BlockDetector;
+    let termContainer: HTMLDivElement;
+    let isNewInstance = false;
 
-    terminalRef.current = term;
+    // Check if we already have an instance in the pool
+    const existingInstance = pool.get(sessionId);
+    if (existingInstance) {
+      // Reuse existing instance - attach to DOM
+      containerRef.current.appendChild(existingInstance.containerDiv);
 
-    // Initialize block detector with line number tracking
-    const detector = new BlockDetector({
-      onBlockStart: (command, startLine) => {
-        return createMarker(sessionId, command, startLine);
-      },
-      onBlockComplete: (markerId, endLine, status) => {
-        completeMarker(markerId, endLine, status);
-      },
-      getCurrentLine: () => getCurrentBufferLine(term),
-    });
-    detectorRef.current = detector;
+      term = existingInstance.terminal;
+      detector = existingInstance.detector;
+      termContainer = existingInstance.containerDiv;
 
-    // Initialize addons
-    const fitAddon = new FitAddon();
-    fitAddonRef.current = fitAddon;
-    term.loadAddon(fitAddon);
+      // Update refs
+      terminalRef.current = term;
+      fitAddonRef.current = existingInstance.fitAddon;
+      searchAddonRef.current = existingInstance.searchAddon;
+      detectorRef.current = detector;
 
-    const searchAddon = new SearchAddon();
-    searchAddonRef.current = searchAddon;
-    term.loadAddon(searchAddon);
+      // Dispose old React-side handlers (they reference stale state)
+      existingInstance.disposables.forEach((d) => d.dispose());
+      existingInstance.disposables = [];
 
-    // Open terminal in container
-    term.open(containerRef.current);
+      // Refit to new container size
+      existingInstance.fitAddon.fit();
 
-    // Try to load WebGL addon for better performance
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose();
+      // Focus terminal
+      term.focus();
+    } else {
+      // Create new terminal instance
+      isNewInstance = true;
+
+      // Create inner container div for the terminal
+      termContainer = document.createElement("div");
+      termContainer.className = "terminal-canvas-inner";
+      termContainer.style.width = "100%";
+      termContainer.style.height = "100%";
+      containerRef.current.appendChild(termContainer);
+
+      // Create terminal with transparent background
+      term = new Terminal({
+        allowTransparency: true,
+        theme: {
+          background: "#00000000",
+          foreground: "#e0e0e0",
+          cursor: "#ffffff",
+          cursorAccent: "#000000",
+          selectionBackground: "#ffffff40",
+          black: "#000000",
+          red: "#ff5555",
+          green: "#50fa7b",
+          yellow: "#f1fa8c",
+          blue: "#6272a4",
+          magenta: "#ff79c6",
+          cyan: "#8be9fd",
+          white: "#f8f8f2",
+          brightBlack: "#6272a4",
+          brightRed: "#ff6e6e",
+          brightGreen: "#69ff94",
+          brightYellow: "#ffffa5",
+          brightBlue: "#d6acff",
+          brightMagenta: "#ff92df",
+          brightCyan: "#a4ffff",
+          brightWhite: "#ffffff",
+        },
+        fontFamily: fontFamily,
+        fontSize: 14,
+        cursorBlink: true,
+        cursorStyle: "block",
+        scrollback: 10000,
       });
-      term.loadAddon(webglAddon);
-    } catch (e) {
-      console.warn("WebGL addon not supported:", e);
+
+      terminalRef.current = term;
+
+      // Initialize block detector with line number tracking
+      detector = new BlockDetector({
+        onBlockStart: (command, startLine) => {
+          return createMarker(sessionId, command, startLine);
+        },
+        onBlockComplete: (markerId, endLine, status) => {
+          completeMarker(markerId, endLine, status);
+        },
+        getCurrentLine: () => getCurrentBufferLine(term),
+      });
+      detectorRef.current = detector;
+
+      // Initialize addons
+      const fitAddon = new FitAddon();
+      fitAddonRef.current = fitAddon;
+      term.loadAddon(fitAddon);
+
+      const searchAddon = new SearchAddon();
+      searchAddonRef.current = searchAddon;
+      term.loadAddon(searchAddon);
+
+      // Open terminal in container
+      term.open(termContainer);
+
+      // Try to load WebGL addon for better performance
+      let webglAddon: WebglAddon | null = null;
+      try {
+        webglAddon = new WebglAddon();
+        webglAddon.onContextLoss(() => {
+          webglAddon?.dispose();
+        });
+        term.loadAddon(webglAddon);
+      } catch (e) {
+        console.warn("WebGL addon not supported:", e);
+      }
+
+      // Fit terminal to container
+      fitAddon.fit();
+
+      // Store instance in pool (without disposables yet)
+      const instance: TerminalInstance = {
+        terminal: term,
+        containerDiv: termContainer,
+        fitAddon,
+        webglAddon,
+        searchAddon,
+        detector,
+        disposables: [],
+      };
+      pool.set(sessionId, instance);
     }
 
-    // Fit terminal to container
-    fitAddon.fit();
+    // === Setup React-side handlers (fresh each mount) ===
 
-    // Update cell dimensions after fit
+    // Update cell dimensions
     const updateCellDimensions = () => {
-      // Access internal render dimensions for accurate cell sizing
       const core = (term as unknown as { _core: {
         _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } }
       } })._core;
@@ -321,12 +415,10 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
         setCellDimensions({ width: dims.width, height: dims.height });
       }
     };
-    // Initial update after a short delay to ensure rendering is ready
     setTimeout(updateCellDimensions, 100);
 
     // Helper to extract current input from prompt line
     const extractPromptInput = (lineText: string): string => {
-      // Match common prompt endings: $, #, >, ], followed by optional space and input
       const promptMatch = lineText.match(/[$#>\]]\s*(.*)$/);
       return promptMatch?.[1] || "";
     };
@@ -338,10 +430,8 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
       const lineText = line?.translateToString(true) || "";
       const currentInput = extractPromptInput(lineText);
 
-      // Update cursor position (relative to viewport)
       setCursorPos({ x: buffer.cursorX, y: buffer.cursorY });
 
-      // Match against command history
       if (currentInput.length > 0) {
         const history = getCommandHistory(sessionId);
         const match = history.find(
@@ -353,48 +443,43 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
       }
     };
 
+    // Collect disposables
+    const disposables: Array<{ dispose: () => void }> = [];
+
     // Handle terminal input with Tab key interception
     const inputDisposable = term.onData((data) => {
-      // Tab key - accept ghost text suggestion
       if (data === "\t" && ghostTextRef.current) {
         const encoder = new TextEncoder();
         const bytes = Array.from(encoder.encode(ghostTextRef.current));
         invoke("send_input", { sessionId, data: bytes }).catch(console.error);
         setGhostText("");
-        return; // Don't send Tab to backend
+        return;
       }
 
-      // Update detector state for block detection
       detector.processInput(data);
 
-      // Send all input directly to backend
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
-      invoke("send_input", {
-        sessionId,
-        data: bytes,
-      }).catch(console.error);
+      invoke("send_input", { sessionId, data: bytes }).catch(console.error);
 
-      // Clear ghost text on Enter (command submitted)
       if (data === "\r" || data === "\n") {
         setGhostText("");
       }
     });
+    disposables.push(inputDisposable);
 
     // Track cursor movement to update ghost text
     const cursorDisposable = term.onCursorMove(() => {
       updateGhostText();
     });
+    disposables.push(cursorDisposable);
 
-    // Track selection changes and capture to clipboard history when copied
-    const selectionDisposable = term.onSelectionChange(() => {
-      // onSelectionChange fires when selection changes, not when copied
-      // We need to use the copy handler instead
-    });
+    // Track selection changes
+    const selectionDisposable = term.onSelectionChange(() => {});
+    disposables.push(selectionDisposable);
 
-    // Listen for Ctrl+C to capture clipboard when copying from terminal
+    // Listen for Ctrl+C to capture clipboard
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+C or Cmd+C when there's a selection (copy)
       if ((e.ctrlKey || e.metaKey) && e.key === "c" && term.hasSelection()) {
         const selectedText = term.getSelection();
         if (selectedText) {
@@ -404,73 +489,76 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     };
     document.addEventListener("keydown", handleKeyDown);
 
-    // Listen for data from backend with batching for backpressure control
+    // Store disposables in pool instance
+    const poolInstance = pool.get(sessionId);
+    if (poolInstance) {
+      poolInstance.disposables = disposables;
+    }
+
+    // === Setup Tauri listeners (only for new instances) ===
     let unlistenData: UnlistenFn | null = null;
     let unlistenState: UnlistenFn | null = null;
 
-    // Batch processing state
-    let pendingWrites = 0;
-    const BATCH_THRESHOLD = 10; // Notify drain after this many writes
+    if (isNewInstance) {
+      let pendingWrites = 0;
+      const BATCH_THRESHOLD = 10;
 
-    const notifyDrain = () => {
-      invoke("notify_buffer_drained", { sessionId }).catch((e) => {
-        console.warn("Failed to notify buffer drain:", e);
-      });
-    };
+      const notifyDrain = () => {
+        invoke("notify_buffer_drained", { sessionId }).catch((e) => {
+          console.warn("Failed to notify buffer drain:", e);
+        });
+      };
 
-    const setupListeners = async () => {
-      unlistenData = await listen<number[]>(
-        `session:${sessionId}`,
-        (event) => {
-          const bytes = new Uint8Array(event.payload);
-          const text = new TextDecoder().decode(bytes);
+      const setupListeners = async () => {
+        unlistenData = await listen<number[]>(
+          `session:${sessionId}`,
+          (event) => {
+            const bytes = new Uint8Array(event.payload);
+            const text = new TextDecoder().decode(bytes);
 
-          pendingWrites++;
+            pendingWrites++;
 
-          // Write to terminal, then process for block detection after write completes
-          // This ensures the buffer is updated before getCurrentLine() is called
-          term.write(bytes, () => {
-            detector.processOutput(text);
-            // Update ghost text after output is written
-            updateGhostText();
-            updateCellDimensions();
+            term.write(bytes, () => {
+              detector.processOutput(text);
+              updateGhostText();
+              updateCellDimensions();
 
-            // Log matching (async, non-blocking)
-            // Split output into lines and match each against indexed patterns
-            const lines = text.split("\n");
-            for (const line of lines) {
-              if (line.trim().length > 5) {
-                // Only match non-trivial lines
-                matchLine(line.trim(), sessionId).catch(() => {
-                  // Silently ignore matching errors
-                });
+              const lines = text.split("\n");
+              for (const line of lines) {
+                if (line.trim().length > 5) {
+                  matchLine(line.trim(), sessionId).catch(() => {});
+                }
               }
-            }
 
-            // Notify backend that we've processed data (backpressure signal)
-            // Batch notifications to avoid excessive IPC overhead
-            if (pendingWrites >= BATCH_THRESHOLD) {
-              pendingWrites = 0;
-              notifyDrain();
-            }
-          });
+              if (pendingWrites >= BATCH_THRESHOLD) {
+                pendingWrites = 0;
+                notifyDrain();
+              }
+            });
+          }
+        );
+
+        unlistenState = await listen<string>(
+          `session:${sessionId}:state`,
+          (event) => {
+            console.log(`Session ${sessionId} state:`, event.payload);
+          }
+        );
+
+        // Update pool instance with listeners
+        const inst = pool.get(sessionId);
+        if (inst) {
+          inst.unlistenData = unlistenData ?? undefined;
+          inst.unlistenState = unlistenState ?? undefined;
         }
-      );
+      };
 
-      unlistenState = await listen<string>(
-        `session:${sessionId}:state`,
-        (event) => {
-          console.log(`Session ${sessionId} state:`, event.payload);
-        }
-      );
-    };
-
-    setupListeners();
+      setupListeners();
+    }
 
     // Handle window resize
     const resizeObserver = new ResizeObserver((entries) => {
       handleResize();
-      // Update container height for gutter
       for (const entry of entries) {
         setContainerHeight(entry.contentRect.height);
       }
@@ -479,28 +567,34 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
       resizeObserver.observe(containerRef.current);
     }
 
-    // Cleanup
+    // Cleanup: dispose React handlers, detach from DOM
     return () => {
-      inputDisposable.dispose();
-      cursorDisposable.dispose();
-      selectionDisposable.dispose();
       document.removeEventListener("keydown", handleKeyDown);
       resizeObserver.disconnect();
-      unlistenData?.();
-      unlistenState?.();
-      detector.dispose();
-      term.dispose();
+
+      // Clear pending resize timeout
+      if (resizeTimeoutRef.current) {
+        clearTimeout(resizeTimeoutRef.current);
+        resizeTimeoutRef.current = null;
+      }
+
+      // Dispose React-side handlers
+      disposables.forEach((d) => d.dispose());
+
+      // Clear disposables from pool (they're now stale)
+      const inst = pool.get(sessionId);
+      if (inst) {
+        inst.disposables = [];
+      }
+
+      // Just remove from DOM, instance stays in pool
+      if (termContainer.parentNode) {
+        termContainer.remove();
+      }
     };
-  }, [
-    sessionId,
-    fontFamily,
-    handleResize,
-    createMarker,
-    completeMarker,
-    getCommandHistory,
-    matchLine,
-    addClipboardEntry,
-  ]);
+    // Note: handleResize uses refs so it's stable, but we still include it for correctness
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, fontFamily, createMarker, completeMarker, getCommandHistory, matchLine, addClipboardEntry, pool]);
 
   // Context menu actions
   const handleCopyCommand = useCallback(() => {

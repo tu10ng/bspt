@@ -1,3 +1,8 @@
+/* Utility classes */
+.text-muted {
+  color: var(--color-text-muted, #888);
+}
+
 /* 3x3 CSS Grid Layout with CommandBar */
 .app-grid {
   display: grid;
@@ -303,6 +308,31 @@
 .session-tree-container {
   flex: 1;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.session-tree-actions {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+}
+
+.session-tree-action-btn {
+  padding: 4px 8px;
+  background: var(--color-surface-tertiary, #333);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-secondary, #aaa);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.session-tree-action-btn:hover {
+  background: var(--color-surface-secondary, #222);
+  color: var(--color-text-primary, #fff);
 }
 
 .session-tree-empty {
@@ -310,6 +340,12 @@
   text-align: center;
   color: var(--color-text-muted);
   font-size: 13px;
+  flex: 1;
+}
+
+.session-tree-empty-area {
+  flex: 1;
+  min-height: 50px;
 }
 
 .tree-node {
@@ -355,6 +391,51 @@
   background: var(--color-surface-tertiary);
   padding: 2px 6px;
   border-radius: 10px;
+}
+
+/* Folder node styles */
+.tree-node-folder {
+  background: var(--color-surface-secondary);
+}
+
+.tree-node-folder:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.tree-node-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* Inline editing styles */
+.tree-node-editing {
+  background: var(--color-surface-tertiary);
+}
+
+.tree-node-edit-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid var(--color-accent-primary);
+  color: var(--color-text-primary);
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  outline: none;
+  font-family: inherit;
+}
+
+.tree-node-edit-input:focus {
+  box-shadow: 0 0 0 2px rgba(80, 250, 123, 0.2);
+}
+
+/* Drag and drop indicators */
+.tree-node-drag-over {
+  border-top: 2px solid var(--color-accent-primary);
+}
+
+.tree-node-drop-target {
+  background: rgba(80, 250, 123, 0.15) !important;
 }
 
 /* State indicators */
@@ -460,6 +541,32 @@
   height: 1px;
   background: var(--color-glass-border);
   margin: 4px 0;
+}
+
+.context-menu-shortcut {
+  float: right;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-left: 12px;
+}
+
+.context-menu-input-wrapper {
+  padding: 4px;
+}
+
+.context-menu-input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--color-surface-tertiary);
+  border: 1px solid var(--color-accent-primary);
+  border-radius: 4px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.context-menu-input:focus {
+  box-shadow: 0 0 0 2px rgba(80, 250, 123, 0.2);
 }
 
 /* ========================================
@@ -1234,16 +1341,22 @@
 
 .tab-bar {
   display: flex;
-  align-items: stretch;
+  flex-wrap: wrap;              /* Enable wrapping */
+  align-content: flex-start;    /* Multi-row top alignment */
+  align-items: center;
   gap: 2px;
-  padding: 4px 8px 0;
+  padding: 4px 8px;
   background: rgba(18, 18, 18, 0.6);
   border-bottom: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
-  overflow-x: auto;
+  overflow: hidden;             /* Disable horizontal scroll, use wrap instead */
   flex-shrink: 0;
+  min-height: 36px;             /* At least one row */
+  max-height: 108px;            /* Max 3 rows (36px * 3) */
+  overflow-y: auto;             /* Vertical scroll if more than 3 rows */
 }
 
 .tab-bar::-webkit-scrollbar {
+  width: 4px;
   height: 4px;
 }
 
@@ -1260,15 +1373,18 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 4px 8px;             /* Reduced padding */
   background: var(--color-surface-secondary, #1e1e1e);
   border: 1px solid transparent;
   border-bottom: none;
-  border-radius: 6px 6px 0 0;
+  border-radius: 4px 4px 0 0;   /* Reduced border-radius */
   cursor: pointer;
   user-select: none;
-  min-width: 100px;
-  max-width: 180px;
+  min-width: 80px;              /* Reduced min-width */
+  max-width: 150px;             /* Reduced max-width */
+  height: 28px;                 /* Fixed height */
+  flex-shrink: 1;               /* Allow shrinking */
+  margin-bottom: 2px;           /* Row gap */
   transition: all 0.15s;
 }
 
@@ -1340,6 +1456,17 @@
 .terminal-content {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Terminal tab panel - contains individual terminal instances */
+.terminal-tab-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   overflow: hidden;
 }
 

@@ -33,20 +33,7 @@ export const useTabStore = create<TabState>()(
       activeTabId: null,
 
       openTab: (nodeId: string, sessionId: string, label: string, protocol: Protocol) => {
-        // Check if tab already exists for this node
-        const existingTab = get().tabs.find((t) => t.nodeId === nodeId);
-        if (existingTab) {
-          // Update session ID if changed and activate
-          set((state) => ({
-            tabs: state.tabs.map((t) =>
-              t.id === existingTab.id ? { ...t, sessionId } : t
-            ),
-            activeTabId: existingTab.id,
-          }));
-          return existingTab.id;
-        }
-
-        // Create new tab
+        // Always create a new tab - one node can have multiple tabs (different sessions)
         const tabId = uuidv4();
         const maxOrder = Math.max(0, ...get().tabs.map((t) => t.order));
         const tab: Tab = {
@@ -67,6 +54,17 @@ export const useTabStore = create<TabState>()(
       },
 
       closeTab: (tabId: string) => {
+        const tab = get().tabs.find((t) => t.id === tabId);
+
+        // Dispatch cleanup event before removing the tab
+        if (tab && tab.sessionId) {
+          window.dispatchEvent(
+            new CustomEvent("bspt:tab-closed", {
+              detail: { sessionId: tab.sessionId },
+            })
+          );
+        }
+
         set((state) => {
           const tabIndex = state.tabs.findIndex((t) => t.id === tabId);
           if (tabIndex === -1) return state;

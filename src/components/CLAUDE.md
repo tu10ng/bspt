@@ -28,22 +28,48 @@ Theme customization panel with:
 
 Uses `useThemeStore` hook for state management.
 
-### Terminal/Terminal.tsx
-xterm.js wrapper with WebGL rendering:
+### Terminal/TerminalArea.tsx
+Container for multi-tab terminal management:
+- Renders TabBar for tab navigation
+- Renders ALL terminals with valid sessions (not just active)
+- Uses CSS `display: none/block` for visibility control
+- Preserves terminal content across tab switches
+- Sets up tab close listener for pool cleanup
+
+### Terminal/UnifiedTerminal.tsx
+xterm.js wrapper with WebGL rendering and instance pooling:
 - Transparent background (`#00000000`)
 - Dracula-inspired color theme
 - FitAddon for responsive sizing
 - SearchAddon for find functionality
 - WebglAddon for GPU acceleration
-- ResizeObserver for container changes
+- ResizeObserver with debouncing (100ms)
 - Tauri event listeners for session data
+- **Terminal Pool**: Instances persist across tab switches via `useTerminalPool`
 
 **Props:**
 - `sessionId: string` - Backend session identifier
+- `activeMarkerId?: string | null` - Highlighted block marker
 
 **Events Listened:**
 - `session:{sessionId}` - Terminal data (Uint8Array)
 - `session:{sessionId}:state` - Connection state changes
+
+**Instance Pool Architecture:**
+```
+Tab Switch A → B:
+1. UnifiedTerminal unmounts for session A
+2. Terminal instance stays in pool (not disposed)
+3. DOM element detached, React handlers disposed
+4. Tauri listeners persist in pool
+
+Tab Switch B → A:
+1. UnifiedTerminal mounts for session A
+2. Finds existing instance in pool
+3. Reattaches DOM element
+4. Sets up fresh React handlers
+5. Buffer content preserved!
+```
 
 ### Sidebar/SessionTree.tsx
 react-arborist tree for session management:
@@ -88,6 +114,16 @@ Positioned at click coordinates, closes on outside click or Escape.
 .context-menu-item        /* Menu button */
 .context-menu-item-danger /* Red text for Remove */
 .context-menu-separator   /* Divider line */
+```
+
+### Terminal Area
+```css
+.terminal-area-container  /* Flex column container */
+.terminal-content         /* Terminal panels container */
+.terminal-tab-panel       /* Individual terminal wrapper (absolute positioned) */
+.tab-bar                  /* Chrome-style tab bar */
+.tab-item                 /* Individual tab */
+.tab-active               /* Active tab styling */
 ```
 
 ## Planned Components

@@ -27,8 +27,19 @@ export const GutterOverlay = memo(function GutterOverlay({
   }, [scrollTop, cellHeight, viewportHeight]);
 
   // Filter markers to only show those in visible range
+  // Also validate that we have valid dimensions to prevent residue
   const visibleMarkers = useMemo(() => {
+    // Don't render markers if dimensions are not initialized
+    if (!cellHeight || cellHeight <= 0 || viewportHeight <= 0) {
+      return [];
+    }
+
     return markers.filter((marker) => {
+      // Validate marker has valid line numbers
+      if (marker.startLine < 0) {
+        return false;
+      }
+
       // A marker is visible if its start line is in range OR
       // if it spans across the visible range
       const markerEnd = marker.endLine ?? marker.startLine;
@@ -37,7 +48,7 @@ export const GutterOverlay = memo(function GutterOverlay({
         markerEnd >= visibleRange.startLine
       );
     });
-  }, [markers, visibleRange]);
+  }, [markers, visibleRange, cellHeight, viewportHeight]);
 
   // Get collapsed markers with their overlay dimensions
   const collapsedMarkers = useMemo(() => {

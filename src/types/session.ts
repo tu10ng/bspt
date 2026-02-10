@@ -44,9 +44,20 @@ export interface RouterNode {
   sessionId: string | null;
   vrpView: VrpView;
   boards: LinuxBoardNode[];
+  parentId: string | null;  // null = root level
+  order: number;            // sibling sort order
 }
 
-export type SessionTreeNode = RouterNode | LinuxBoardNode;
+// Folder node for organizing routers
+export interface FolderNode {
+  id: string;
+  type: "folder";
+  name: string;
+  parentId: string | null;  // null = root level
+  order: number;            // sibling sort order
+}
+
+export type SessionTreeNode = RouterNode | LinuxBoardNode | FolderNode;
 
 // react-arborist compatible tree data structure
 export interface TreeNodeData {
@@ -55,6 +66,8 @@ export interface TreeNodeData {
   children?: TreeNodeData[];
   // Discriminated union for node-specific data
   nodeData: SessionTreeNode;
+  // For inline editing
+  isEditing?: boolean;
 }
 
 // Helper type for react-arborist node

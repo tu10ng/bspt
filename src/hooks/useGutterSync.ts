@@ -18,9 +18,9 @@ interface GutterSyncState {
 export function useGutterSync(terminal: Terminal | null): GutterSyncState {
   const [syncState, setSyncState] = useState<GutterSyncState>({
     scrollTop: 0,
-    cellHeight: 17,
-    cellWidth: 8,
-    viewportRows: 24,
+    cellHeight: 0,  // Start at 0 to indicate not initialized
+    cellWidth: 0,
+    viewportRows: 0,
     bufferLine: 0,
   });
 
@@ -47,10 +47,25 @@ export function useGutterSync(terminal: Terminal | null): GutterSyncState {
     });
   }, [terminal]);
 
+  // Reset state when terminal changes (prevents stale gutter state)
+  useEffect(() => {
+    if (!terminal) {
+      // Reset to initial state when terminal is null
+      setSyncState({
+        scrollTop: 0,
+        cellHeight: 0,
+        cellWidth: 0,
+        viewportRows: 0,
+        bufferLine: 0,
+      });
+    }
+  }, [terminal]);
+
   useEffect(() => {
     if (!terminal) return;
 
-    // Initial dimensions
+    // Initial dimensions (with small delay for rendering)
+    const initTimeout = setTimeout(updateDimensions, 50);
     updateDimensions();
 
     // Update on scroll
@@ -69,6 +84,7 @@ export function useGutterSync(terminal: Terminal | null): GutterSyncState {
     });
 
     return () => {
+      clearTimeout(initTimeout);
       scrollDisposable.dispose();
       resizeDisposable.dispose();
       renderDisposable.dispose();

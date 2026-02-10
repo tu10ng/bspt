@@ -103,6 +103,42 @@ Block-based command/response tracking:
 
 Persisted to `bspt-markers` in localStorage.
 
+### tabStore.ts
+Multi-tab terminal management:
+
+**State:**
+- `tabs`: Tab[] - Open terminal tabs
+- `activeTabId`: Currently active tab
+
+**Tab Interface:**
+```typescript
+interface Tab {
+  id: string;         // Unique tab ID
+  nodeId: string;     // Session tree node ID
+  sessionId: string;  // Backend session ID
+  label: string;      // Display label (hostname:port)
+  protocol: Protocol; // SSH | Telnet
+  order: number;      // Tab order
+}
+```
+
+**Actions:**
+- `openTab(nodeId, sessionId, label, protocol)` - Create new tab
+- `closeTab(tabId)` - Close tab, dispatches `bspt:tab-closed` event
+- `setActiveTab(tabId)` - Switch to tab
+- `reorderTabs(dragId, dropId)` - Drag-drop reorder
+- `getTabByNodeId(nodeId)` / `getTabBySessionId(sessionId)` - Lookups
+
+**Tab Close Event:**
+When `closeTab` is called, it dispatches a custom event for terminal pool cleanup:
+```typescript
+window.dispatchEvent(new CustomEvent("bspt:tab-closed", {
+  detail: { sessionId: tab.sessionId }
+}));
+```
+
+Persisted to `bspt-tabs` in localStorage (sessionId cleared on persist).
+
 ## IPC Synchronization
 For stores that sync with Rust backend:
 ```typescript

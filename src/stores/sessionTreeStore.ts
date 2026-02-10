@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import {
   RouterNode,
   LinuxBoardNode,
+  FolderNode,
   Protocol,
   ConnectionState,
   VrpView,
@@ -18,20 +19,33 @@ import {
 interface SessionTreeState {
   // Data
   routers: Map<string, RouterNode>;
+  folders: Map<string, FolderNode>;
   activeNodeId: string | null;
   activeSessionId: string | null;
 
   // VRP event listeners
   vrpListeners: Map<string, UnlistenFn>;
 
-  // Actions - CRUD
-  addRouter: (router: Omit<RouterNode, "id" | "type" | "boards" | "connectionState" | "sessionId" | "vrpView">) => string;
+  // Actions - CRUD Routers
+  addRouter: (router: Omit<RouterNode, "id" | "type" | "boards" | "connectionState" | "sessionId" | "vrpView" | "parentId" | "order">) => string;
   updateRouter: (id: string, updates: Partial<RouterNode>) => void;
   removeRouter: (id: string) => void;
 
+  // Actions - CRUD Boards
   addBoard: (routerId: string, board: Omit<LinuxBoardNode, "id" | "type" | "connectionState" | "sessionId">) => string | null;
   updateBoard: (routerId: string, boardId: string, updates: Partial<LinuxBoardNode>) => void;
   removeBoard: (routerId: string, boardId: string) => void;
+
+  // Actions - CRUD Folders
+  addFolder: (name: string, parentId?: string | null) => string;
+  updateFolder: (id: string, updates: Partial<FolderNode>) => void;
+  removeFolder: (id: string) => void;
+
+  // Actions - Drag & Drop
+  moveNode: (nodeId: string, targetParentId: string | null, insertIndex: number) => void;
+
+  // Actions - Rename
+  renameNode: (nodeId: string, newName: string) => void;
 
   // Actions - Connection
   connectNode: (nodeId: string) => Promise<void>;
@@ -44,8 +58,9 @@ interface SessionTreeState {
 
   // Helpers
   getTreeData: () => TreeNodeData[];
-  findNodeById: (id: string) => RouterNode | LinuxBoardNode | null;
+  findNodeById: (id: string) => RouterNode | LinuxBoardNode | FolderNode | null;
   getActiveSession: () => { node: RouterNode | LinuxBoardNode; sessionId: string } | null;
+  getNextOrder: (parentId: string | null) => number;
 }
 
 // Helper to find router containing a board
@@ -65,13 +80,37 @@ export const useSessionTreeStore = create<SessionTreeState>()(
   persist(
     (set, get) => ({
       routers: new Map(),
+      folders: new Map(),
       activeNodeId: null,
       activeSessionId: null,
       vrpListeners: new Map(),
 
+      // Helper to get next order number
+      getNextOrder: (parentId: string | null): number => {
+        const { routers, folders } = get();
+        let maxOrder = -1;
+
+        // Check routers with this parent
+        for (const router of routers.values()) {
+          if (router.parentId === parentId) {
+            maxOrder = Math.max(maxOrder, router.order);
+          }
+        }
+
+        // Check folders with this parent
+        for (const folder of folders.values()) {
+          if (folder.parentId === parentId) {
+            maxOrder = Math.max(maxOrder, folder.order);
+          }
+        }
+
+        return maxOrder + 1;
+      },
+
       // CRUD - Routers
       addRouter: (routerData) => {
         const id = uuidv4();
+        const { getNextOrder } = get();
         const router: RouterNode = {
           id,
           type: "router",
@@ -86,6 +125,8 @@ export const useSessionTreeStore = create<SessionTreeState>()(
           sessionId: null,
           vrpView: "unknown",
           boards: [],
+          parentId: null,
+          order: getNextOrder(null),
         };
 
         set((state) => {
@@ -204,6 +245,181 @@ export const useSessionTreeStore = create<SessionTreeState>()(
             activeNodeId: state.activeNodeId === boardId ? null : state.activeNodeId,
           };
         });
+      },
+
+      // CRUD - Folders
+      addFolder: (name: string, parentId: string | null = null): string => {
+        const id = uuidv4();
+        const { getNextOrder } = get();
+        const folder: FolderNode = {
+          id,
+          type: "folder",
+          name,
+          parentId,
+          order: getNextOrder(parentId),
+        };
+
+        set((state) => {
+          const folders = new Map(state.folders);
+          folders.set(id, folder);
+          return { folders };
+        });
+
+        return id;
+      },
+
+      updateFolder: (id: string, updates: Partial<FolderNode>) => {
+        set((state) => {
+          const folders = new Map(state.folders);
+          const folder = folders.get(id);
+          if (folder) {
+            folders.set(id, { ...folder, ...updates });
+          }
+          return { folders };
+        });
+      },
+
+      removeFolder: (id: string) => {
+        const { routers, folders, removeRouter, removeFolder } = get();
+
+        // Remove all children (routers and subfolders)
+        for (const router of routers.values()) {
+          if (router.parentId === id) {
+            removeRouter(router.id);
+          }
+        }
+        for (const folder of folders.values()) {
+          if (folder.parentId === id) {
+            removeFolder(folder.id);
+          }
+        }
+
+        set((state) => {
+          const newFolders = new Map(state.folders);
+          newFolders.delete(id);
+          return { folders: newFolders };
+        });
+      },
+
+      // Drag & Drop
+      moveNode: (nodeId: string, targetParentId: string | null, insertIndex: number) => {
+        const { routers, folders, updateRouter, updateFolder } = get();
+
+        // Check if it's a router
+        const router = routers.get(nodeId);
+        if (router) {
+          // Validate target: must be folder or null (root)
+          if (targetParentId !== null && !folders.has(targetParentId)) {
+            return; // Invalid target
+          }
+
+          // Get siblings at target location
+          const siblings: { id: string; order: number }[] = [];
+          for (const r of routers.values()) {
+            if (r.parentId === targetParentId && r.id !== nodeId) {
+              siblings.push({ id: r.id, order: r.order });
+            }
+          }
+          for (const f of folders.values()) {
+            if (f.parentId === targetParentId) {
+              siblings.push({ id: f.id, order: f.order });
+            }
+          }
+
+          // Sort siblings by order
+          siblings.sort((a, b) => a.order - b.order);
+
+          // Calculate new order
+          let newOrder: number;
+          if (siblings.length === 0) {
+            newOrder = 0;
+          } else if (insertIndex <= 0) {
+            newOrder = siblings[0].order - 1;
+          } else if (insertIndex >= siblings.length) {
+            newOrder = siblings[siblings.length - 1].order + 1;
+          } else {
+            // Insert between two siblings
+            const prevOrder = siblings[insertIndex - 1].order;
+            const nextOrder = siblings[insertIndex].order;
+            newOrder = (prevOrder + nextOrder) / 2;
+          }
+
+          updateRouter(nodeId, { parentId: targetParentId, order: newOrder });
+          return;
+        }
+
+        // Check if it's a folder
+        const folder = folders.get(nodeId);
+        if (folder) {
+          // Prevent moving folder into itself or its descendants
+          let checkId: string | null = targetParentId;
+          while (checkId !== null) {
+            if (checkId === nodeId) {
+              return; // Would create a cycle
+            }
+            checkId = folders.get(checkId)?.parentId ?? null;
+          }
+
+          // Validate target: must be folder or null (root)
+          if (targetParentId !== null && !folders.has(targetParentId)) {
+            return; // Invalid target
+          }
+
+          // Get siblings at target location
+          const siblings: { id: string; order: number }[] = [];
+          for (const r of routers.values()) {
+            if (r.parentId === targetParentId) {
+              siblings.push({ id: r.id, order: r.order });
+            }
+          }
+          for (const f of folders.values()) {
+            if (f.parentId === targetParentId && f.id !== nodeId) {
+              siblings.push({ id: f.id, order: f.order });
+            }
+          }
+
+          // Sort siblings by order
+          siblings.sort((a, b) => a.order - b.order);
+
+          // Calculate new order
+          let newOrder: number;
+          if (siblings.length === 0) {
+            newOrder = 0;
+          } else if (insertIndex <= 0) {
+            newOrder = siblings[0].order - 1;
+          } else if (insertIndex >= siblings.length) {
+            newOrder = siblings[siblings.length - 1].order + 1;
+          } else {
+            const prevOrder = siblings[insertIndex - 1].order;
+            const nextOrder = siblings[insertIndex].order;
+            newOrder = (prevOrder + nextOrder) / 2;
+          }
+
+          updateFolder(nodeId, { parentId: targetParentId, order: newOrder });
+        }
+      },
+
+      // Rename
+      renameNode: (nodeId: string, newName: string) => {
+        const { routers, folders, updateRouter, updateFolder, updateBoard } = get();
+
+        // Check routers
+        if (routers.has(nodeId)) {
+          updateRouter(nodeId, { name: newName });
+          return;
+        }
+
+        // Check folders
+        if (folders.has(nodeId)) {
+          updateFolder(nodeId, { name: newName });
+          return;
+        }
+
+        // Check boards
+        const parentRouter = findRouterByBoardId(routers, nodeId);
+        if (parentRouter) {
+          updateBoard(parentRouter.id, nodeId, { name: newName });
+        }
       },
 
       // Connection
@@ -443,32 +659,67 @@ export const useSessionTreeStore = create<SessionTreeState>()(
 
       // Helpers
       getTreeData: (): TreeNodeData[] => {
-        const { routers } = get();
-        const treeData: TreeNodeData[] = [];
+        const { routers, folders } = get();
 
-        for (const router of routers.values()) {
-          const routerNode: TreeNodeData = {
-            id: router.id,
-            name: router.name,
-            nodeData: router,
-            children: router.boards.map((board) => ({
-              id: board.id,
-              name: board.name,
-              nodeData: board,
-            })),
-          };
-          treeData.push(routerNode);
-        }
+        // Build tree recursively
+        const buildChildren = (parentId: string | null): TreeNodeData[] => {
+          const children: TreeNodeData[] = [];
 
-        return treeData;
+          // Add folders with this parent
+          for (const folder of folders.values()) {
+            if (folder.parentId === parentId) {
+              children.push({
+                id: folder.id,
+                name: folder.name,
+                nodeData: folder,
+                children: buildChildren(folder.id),
+              });
+            }
+          }
+
+          // Add routers with this parent
+          for (const router of routers.values()) {
+            // Handle legacy routers without parentId (treat as root)
+            const routerParentId = router.parentId ?? null;
+            if (routerParentId === parentId) {
+              children.push({
+                id: router.id,
+                name: router.name,
+                nodeData: router,
+                children: router.boards.map((board) => ({
+                  id: board.id,
+                  name: board.name,
+                  nodeData: board,
+                })),
+              });
+            }
+          }
+
+          // Sort by order
+          children.sort((a, b) => {
+            const aOrder = "order" in a.nodeData ? (a.nodeData as { order: number }).order : 0;
+            const bOrder = "order" in b.nodeData ? (b.nodeData as { order: number }).order : 0;
+            return aOrder - bOrder;
+          });
+
+          return children;
+        };
+
+        return buildChildren(null);
       },
 
-      findNodeById: (id: string): RouterNode | LinuxBoardNode | null => {
-        const { routers } = get();
+      findNodeById: (id: string): RouterNode | LinuxBoardNode | FolderNode | null => {
+        const { routers, folders } = get();
 
+        // Check folders
+        const folder = folders.get(id);
+        if (folder) return folder;
+
+        // Check routers
         const router = routers.get(id);
         if (router) return router;
 
+        // Check boards
         for (const r of routers.values()) {
           const board = r.boards.find((b) => b.id === id);
           if (board) return board;
@@ -482,7 +733,7 @@ export const useSessionTreeStore = create<SessionTreeState>()(
         if (!activeNodeId || !activeSessionId) return null;
 
         const node = findNodeById(activeNodeId);
-        if (!node) return null;
+        if (!node || node.type === "folder") return null;
 
         return { node, sessionId: activeSessionId };
       },
@@ -490,7 +741,7 @@ export const useSessionTreeStore = create<SessionTreeState>()(
     {
       name: "bspt-session-tree",
       partialize: (state) => ({
-        // Only persist router data, not connection state
+        // Persist routers with reset connection state
         routers: Array.from(state.routers.entries()).map(([id, router]) => [
           id,
           {
@@ -505,16 +756,32 @@ export const useSessionTreeStore = create<SessionTreeState>()(
             })),
           },
         ]),
+        // Persist folders
+        folders: Array.from(state.folders.entries()),
       }),
       merge: (persisted, current) => {
-        const persistedState = persisted as { routers?: [string, RouterNode][] };
+        const persistedState = persisted as {
+          routers?: [string, RouterNode][];
+          folders?: [string, FolderNode][];
+        };
+        const result = { ...current };
+
         if (persistedState?.routers) {
-          return {
-            ...current,
-            routers: new Map(persistedState.routers),
-          };
+          // Migrate old routers that don't have parentId/order fields
+          const migratedRouters = persistedState.routers.map(([id, router], index) => {
+            return [id, {
+              ...router,
+              parentId: router.parentId ?? null,  // Default to root if missing
+              order: router.order ?? index,       // Use index as default order
+            }] as [string, RouterNode];
+          });
+          result.routers = new Map(migratedRouters);
         }
-        return current;
+        if (persistedState?.folders) {
+          result.folders = new Map(persistedState.folders);
+        }
+
+        return result;
       },
     }
   )

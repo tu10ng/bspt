@@ -1,6 +1,7 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useTabStore } from "../../stores/tabStore";
 import { useBlockStore } from "../../stores/blockStore";
+import { setupTabCloseListener } from "../../hooks";
 import { TabBar } from "./TabBar";
 import { UnifiedTerminal } from "./UnifiedTerminal";
 
@@ -12,7 +13,14 @@ export function TerminalArea({ activeMarkerId }: TerminalAreaProps) {
   const { tabs, activeTabId, setActiveTab, closeTab, reorderTabs } = useTabStore();
   const { activeMarkerId: blockActiveMarkerId } = useBlockStore();
 
-  const activeTab = tabs.find((t) => t.id === activeTabId);
+  // Setup tab close listener for terminal pool cleanup
+  useEffect(() => {
+    const cleanup = setupTabCloseListener();
+    return cleanup;
+  }, []);
+
+  // Filter tabs with valid sessionIds for rendering
+  const validTabs = tabs.filter((tab) => tab.sessionId);
 
   const handleTabClick = useCallback(
     (tabId: string) => {
@@ -48,11 +56,20 @@ export function TerminalArea({ activeMarkerId }: TerminalAreaProps) {
         onTabReorder={handleTabReorder}
       />
       <div className="terminal-content">
-        {activeTab && activeTab.sessionId ? (
-          <UnifiedTerminal
-            sessionId={activeTab.sessionId}
-            activeMarkerId={effectiveMarkerId}
-          />
+        {validTabs.length > 0 ? (
+          /* Render all terminals, control visibility with CSS */
+          validTabs.map((tab) => (
+            <div
+              key={tab.id}
+              className="terminal-tab-panel"
+              style={{ display: tab.id === activeTabId ? "block" : "none" }}
+            >
+              <UnifiedTerminal
+                sessionId={tab.sessionId}
+                activeMarkerId={tab.id === activeTabId ? effectiveMarkerId : null}
+              />
+            </div>
+          ))
         ) : (
           <div className="terminal-placeholder">
             {tabs.length === 0
