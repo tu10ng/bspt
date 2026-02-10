@@ -2,11 +2,15 @@ mod ringbuffer;
 mod session;
 mod ssh;
 mod telnet;
+mod tracer;
 mod vrp;
 
 use session::{Protocol, SessionConfig, SessionManager};
+use std::path::Path;
 use std::sync::Arc;
 use tauri::Manager;
+use tokio::sync::Mutex;
+use tracer::{IndexStats, LogTracer, SourceLocation, TracerStats};
 use tracing::info;
 
 #[tauri::command]
@@ -99,6 +103,35 @@ async fn notify_buffer_drained(
     state.notify_drained(&session_id).await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn index_source_directory(
+    path: String,
+    state: tauri::State<'_, Arc<Mutex<LogTracer>>>,
+) -> Result<IndexStats, String> {
+    info!(path = %path, "Indexing source directory");
+    let mut tracer = state.lock().await;
+    tracer
+        .index_directory(Path::new(&path))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn match_log_line(
+    line: String,
+    state: tauri::State<'_, Arc<Mutex<LogTracer>>>,
+) -> Result<Option<SourceLocation>, String> {
+    let tracer = state.lock().await;
+    Ok(tracer.match_log(&line).cloned())
+}
+
+#[tauri::command]
+async fn get_tracer_stats(
+    state: tauri::State<'_, Arc<Mutex<LogTracer>>>,
+) -> Result<TracerStats, String> {
+    let tracer = state.lock().await;
+    Ok(tracer.get_stats())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize tracing
@@ -115,6 +148,10 @@ pub fn run() {
         .setup(|app| {
             let session_manager = SessionManager::new(app.handle().clone());
             app.manage(Arc::new(session_manager));
+
+            // Initialize LogTracer for log-to-source mapping
+            let log_tracer = LogTracer::new();
+            app.manage(Arc::new(Mutex::new(log_tracer)));
 
             #[cfg(target_os = "windows")]
             {
@@ -133,7 +170,10 @@ pub fn run() {
             resize_terminal,
             scan_boards,
             set_auto_pagination,
-            notify_buffer_drained
+            notify_buffer_drained,
+            index_source_directory,
+            match_log_line,
+            get_tracer_stats
         ]);
 
     builder

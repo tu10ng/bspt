@@ -5,8 +5,10 @@ import { useBlockStore } from "./stores/blockStore";
 import { ThemeControls } from "./components/ThemeControls";
 import { UnifiedTerminal, Outline } from "./components/Terminal";
 import { SessionTree } from "./components/Sidebar";
+import { FlowPanel } from "./components/Panel";
 import { useState, useCallback } from "react";
 import { Protocol } from "./types/session";
+import { useTracerStore } from "./stores/tracerStore";
 
 function App() {
   const { opacity, blur } = useThemeStore();
@@ -18,6 +20,10 @@ function App() {
     connectNode,
   } = useSessionTreeStore();
   const { activeMarkerId, setActiveMarker } = useBlockStore();
+  const { traceEvents, indexDirectory, indexed, indexing, sourcePath } = useTracerStore();
+
+  // Panel mode state
+  const [panelMode, setPanelMode] = useState<"outline" | "flow">("outline");
 
   // Quick connect form state
   const [host, setHost] = useState("");
@@ -162,14 +168,63 @@ function App() {
         )}
       </main>
 
-      {/* Right Panel - Outline + Theme */}
+      {/* Right Panel - Outline / Traces / Theme */}
       <aside className="panel">
         {activeSessionId ? (
-          <Outline
-            sessionId={activeSessionId}
-            activeMarkerId={activeMarkerId ?? undefined}
-            onSelectMarker={handleSelectMarker}
-          />
+          <>
+            {/* Panel mode tabs */}
+            <div className="panel-tabs">
+              <button
+                className={`panel-tab ${panelMode === "outline" ? "panel-tab-active" : ""}`}
+                onClick={() => setPanelMode("outline")}
+              >
+                Outline
+              </button>
+              <button
+                className={`panel-tab ${panelMode === "flow" ? "panel-tab-active" : ""}`}
+                onClick={() => setPanelMode("flow")}
+              >
+                Traces {traceEvents.length > 0 && `(${traceEvents.length})`}
+              </button>
+            </div>
+
+            {/* Panel content */}
+            {panelMode === "outline" && (
+              <Outline
+                sessionId={activeSessionId}
+                activeMarkerId={activeMarkerId ?? undefined}
+                onSelectMarker={handleSelectMarker}
+              />
+            )}
+            {panelMode === "flow" && (
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+                {/* Index source button */}
+                {!indexed && !indexing && (
+                  <div style={{ padding: "8px 12px" }}>
+                    <button
+                      className="connect-button"
+                      style={{ width: "100%" }}
+                      onClick={async () => {
+                        // Prompt user for directory path
+                        const path = prompt("Enter C source directory path:");
+                        if (path) {
+                          await indexDirectory(path);
+                        }
+                      }}
+                    >
+                      Index Source Directory
+                    </button>
+                  </div>
+                )}
+                {indexed && sourcePath && (
+                  <div style={{ padding: "4px 12px", fontSize: "11px", color: "#757575" }}>
+                    Indexed: {sourcePath.split("/").pop()}
+                  </div>
+                )}
+                <FlowPanel sessionId={activeSessionId} />
+              </div>
+            )}
+          </>
         ) : (
           <>
             <div className="panel-title">Theme</div>

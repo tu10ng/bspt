@@ -124,3 +124,34 @@ export interface BlockMarker {
   startLine: number;      // Command starting line in xterm buffer
   endLine: number | null; // Output ending line (null while running)
 }
+
+// Log Tracer types for source code linkage
+export interface TraceEvent {
+  id: string;
+  file: string;
+  line: number;
+  function: string;
+  timestamp: Date;
+  matched_text: string;
+  log_line: string;
+  session_id: string;
+}
+
+export interface SourceLocation {
+  file: string;
+  line: number;
+  function: string;
+  format_string: string;
+}
+
+export interface IndexStats {
+  files_scanned: number;
+  patterns_indexed: number;
+  duration_ms: number;
+}
+
+export interface TracerStats {
+  indexed: boolean;
+  pattern_count: number;
+  source_path: string | null;
+}

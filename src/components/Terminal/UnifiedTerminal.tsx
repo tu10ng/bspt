@@ -9,6 +9,7 @@ import "@xterm/xterm/css/xterm.css";
 
 import { useThemeStore } from "../../stores/themeStore";
 import { useBlockStore } from "../../stores/blockStore";
+import { useTracerStore } from "../../stores/tracerStore";
 import { BlockDetector } from "../../utils/blockDetector";
 import { useGutterSync, getCurrentBufferLine, useCollapsedRanges } from "../../hooks";
 import { GutterOverlay } from "./GutterOverlay";
@@ -41,6 +42,9 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
   } = useBlockStore();
 
   const markers = getSessionMarkers(sessionId);
+
+  // Tracer for log-to-source mapping
+  const matchLine = useTracerStore((s) => s.matchLine);
 
   // Calculate collapsed ranges for visual hiding
   const collapsedRanges = useCollapsedRanges(markers);
@@ -409,6 +413,18 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
             updateGhostText();
             updateCellDimensions();
 
+            // Log matching (async, non-blocking)
+            // Split output into lines and match each against indexed patterns
+            const lines = text.split("\n");
+            for (const line of lines) {
+              if (line.trim().length > 5) {
+                // Only match non-trivial lines
+                matchLine(line.trim(), sessionId).catch(() => {
+                  // Silently ignore matching errors
+                });
+              }
+            }
+
             // Notify backend that we've processed data (backpressure signal)
             // Batch notifications to avoid excessive IPC overhead
             if (pendingWrites >= BATCH_THRESHOLD) {
@@ -458,6 +474,7 @@ export function UnifiedTerminal({ sessionId, activeMarkerId: _activeMarkerId }: 
     createMarker,
     completeMarker,
     getCommandHistory,
+    matchLine,
   ]);
 
   // Context menu actions

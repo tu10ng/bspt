@@ -382,6 +382,7 @@ dependencies = [
 name = "bspt"
 version = "0.1.0"
 dependencies = [
+ "aho-corasick",
  "async-trait",
  "dashmap",
  "regex",
@@ -396,7 +397,10 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "tree-sitter",
+ "tree-sitter-c",
  "uuid",
+ "walkdir",
  "window-vibrancy 0.5.3",
 ]
 
@@ -5089,6 +5093,26 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "tree-sitter"
+version = "0.22.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df7cc499ceadd4dcdf7ec6d4cbc34ece92c3fa07821e287aedecd4416c516dca"
+dependencies = [
+ "cc",
+ "regex",
+]
+
+[[package]]
+name = "tree-sitter-c"
+version = "0.21.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f956d5351d62652864a4ff3ae861747e7a1940dc96c9998ae400ac0d3ce30427"
+dependencies = [
+ "cc",
+ "tree-sitter",
 ]
 
 [[package]]

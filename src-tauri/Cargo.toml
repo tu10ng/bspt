@@ -27,6 +27,10 @@ async-trait = "0.1"
 uuid = { version = "1", features = ["v4"] }
 thiserror = "1"
 regex = "1"
+tree-sitter = "0.22"
+tree-sitter-c = "0.21"
+aho-corasick = "1"
+walkdir = "2"
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.5"
