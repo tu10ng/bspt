@@ -8,18 +8,31 @@ import { Outline, TerminalArea } from "./components/Terminal";
 import { SessionTree, QuickAddInput } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
 import { FlowPanel } from "./components/Panel";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTracerStore } from "./stores/tracerStore";
 
 function App() {
   const { opacity, blur } = useThemeStore();
   const { findNodeById } = useSessionTreeStore();
   const { activeMarkerId, setActiveMarker } = useBlockStore();
-  const { tabs, activeTabId } = useTabStore();
+  const { tabs, activeTabId, getDisconnectedTabs } = useTabStore();
   const { traceEvents, indexDirectory, indexed, indexing, sourcePath } = useTracerStore();
 
   // Panel mode state
   const [panelMode, setPanelMode] = useState<"outline" | "flow">("outline");
+
+  // Startup reconnection check
+  const [showReconnectBanner, setShowReconnectBanner] = useState(false);
+  const [disconnectedCount, setDisconnectedCount] = useState(0);
+
+  useEffect(() => {
+    // Check for disconnected tabs on startup
+    const disconnectedTabs = getDisconnectedTabs();
+    if (disconnectedTabs.length > 0) {
+      setDisconnectedCount(disconnectedTabs.length);
+      setShowReconnectBanner(true);
+    }
+  }, [getDisconnectedTabs]);
 
   // Get active tab and session info
   const activeTab = tabs.find((t) => t.id === activeTabId);
@@ -67,6 +80,22 @@ function App() {
 
       {/* Terminal - Main Content Area with TabBar */}
       <main className="terminal">
+        {/* Reconnection banner */}
+        {showReconnectBanner && (
+          <div className="reconnect-banner">
+            <span>
+              {disconnectedCount} disconnected tab{disconnectedCount > 1 ? "s" : ""} from previous session.
+              Click the reconnect button (&#8635;) on each tab to restore connections.
+            </span>
+            <button
+              className="reconnect-banner-close"
+              onClick={() => setShowReconnectBanner(false)}
+              title="Dismiss"
+            >
+              &times;
+            </button>
+          </div>
+        )}
         <TerminalArea activeMarkerId={activeMarkerId} />
       </main>
 

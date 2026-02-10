@@ -32,6 +32,7 @@ tree-sitter-c = "0.23"
 aho-corasick = "1"
 streaming-iterator = "0.1"
 walkdir = "2"
+socket2 = { version = "0.5", features = ["all"] }
 
 [target.'cfg(windows)'.dependencies]
 window-vibrancy = "0.5"

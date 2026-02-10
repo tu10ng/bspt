@@ -8,7 +8,25 @@ export type ConnectionState =
   | "connected"
   | "authenticating"
   | "ready"
+  | "reconnecting"
   | "error";
+
+// Reconnection status sent from backend during reconnection attempts
+export interface ReconnectStatus {
+  attempt: number;
+  maxAttempts: number;
+  nextRetryMs: number;
+  lastError?: string;
+}
+
+// Reconnection policy configuration
+export interface ReconnectPolicy {
+  enabled: boolean;
+  maxRetries: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  backoffMultiplier: number;
+}
 
 export type VrpView = "user" | "system" | "interface" | "unknown";
 

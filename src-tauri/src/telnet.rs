@@ -1,7 +1,9 @@
 use crate::ringbuffer::SessionRingBuffer;
 use crate::session::{SessionConfig, SessionError, SessionHandle, SessionManager, SessionState};
 use crate::vrp::{VrpEvent, VrpParser};
+use socket2::{SockRef, TcpKeepalive};
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -271,6 +273,21 @@ pub async fn run_telnet_session(
             return Err(SessionError::ConnectionFailed(e.to_string()));
         }
     };
+
+    // Configure TCP keepalive to detect connection loss
+    let sock_ref = SockRef::from(&stream);
+    let keepalive = TcpKeepalive::new()
+        .with_time(Duration::from_secs(30))
+        .with_interval(Duration::from_secs(10));
+
+    #[cfg(target_os = "linux")]
+    let keepalive = keepalive.with_retries(3);
+
+    if let Err(e) = sock_ref.set_tcp_keepalive(&keepalive) {
+        warn!(session_id = %session_id, error = %e, "Failed to set TCP keepalive");
+    } else {
+        debug!(session_id = %session_id, "TCP keepalive configured (30s idle, 10s interval)");
+    }
 
     emit_state(&app_handle, &session_id, SessionState::Connected);
     emit_state(&app_handle, &session_id, SessionState::Ready);

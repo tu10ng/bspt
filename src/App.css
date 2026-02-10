@@ -85,6 +85,33 @@
   font-size: 14px;
 }
 
+/* Reconnection Banner */
+.reconnect-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(255, 184, 108, 0.15);
+  border-bottom: 1px solid rgba(255, 184, 108, 0.3);
+  color: #ffb86c;
+  font-size: 13px;
+}
+
+.reconnect-banner-close {
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: #ffb86c;
+  font-size: 16px;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.reconnect-banner-close:hover {
+  opacity: 1;
+}
+
 /* Right Panel */
 .panel {
   grid-area: panel;
@@ -456,6 +483,11 @@
   animation: pulse 1s infinite;
 }
 
+.state-reconnecting {
+  background: #ffb86c;
+  animation: spin 1s linear infinite;
+}
+
 .state-error {
   background: #ff5555;
 }
@@ -470,6 +502,15 @@
   }
   50% {
     opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -1440,6 +1481,49 @@
 .tab-close:hover {
   background: rgba(255, 85, 85, 0.2);
   color: #ff5555;
+}
+
+/* Tab disconnected state */
+.tab-disconnected {
+  opacity: 0.7;
+}
+
+.tab-disconnected .tab-label {
+  color: var(--color-text-muted, #888);
+  text-decoration: line-through;
+}
+
+/* Tab reconnecting state */
+.tab-reconnecting {
+  opacity: 0.8;
+}
+
+.tab-reconnecting-indicator {
+  display: inline-block;
+  margin-left: 4px;
+  color: #ffb86c;
+  animation: spin 1s linear infinite;
+}
+
+/* Reconnect button */
+.tab-reconnect {
+  padding: 2px 4px;
+  margin-left: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #50fa7b;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: all 0.15s;
+}
+
+.tab-reconnect:hover {
+  background: rgba(80, 250, 123, 0.2);
+  color: #50fa7b;
+  opacity: 1;
 }
 
 /* ========================================

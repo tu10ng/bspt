@@ -15,8 +15,6 @@ export function TreeContextMenu({ node, position, onClose }: TreeContextMenuProp
   const inputRef = useRef<HTMLInputElement>(null);
 
   const {
-    connectNode,
-    disconnectNode,
     scanBoards,
     removeRouter,
     removeBoard,
@@ -34,8 +32,8 @@ export function TreeContextMenu({ node, position, onClose }: TreeContextMenuProp
   const isConnectable = isRouter || isBoard;
   const isConnected =
     isConnectable &&
-    (nodeData as { connectionState?: string }).connectionState === "ready" ||
-    (nodeData as { connectionState?: string }).connectionState === "connected";
+    ((nodeData as { connectionState?: string }).connectionState === "ready" ||
+    (nodeData as { connectionState?: string }).connectionState === "connected");
 
   // Find parent router for boards
   const getParentRouterId = useCallback((): string | null => {
@@ -78,20 +76,6 @@ export function TreeContextMenu({ node, position, onClose }: TreeContextMenuProp
       inputRef.current.select();
     }
   }, [showNewFolderInput]);
-
-  const handleConnect = () => {
-    if (isConnectable) {
-      connectNode(nodeData.id);
-    }
-    onClose();
-  };
-
-  const handleDisconnect = () => {
-    if (isConnectable) {
-      disconnectNode(nodeData.id);
-    }
-    onClose();
-  };
 
   const handleScanBoards = () => {
     if (isRouter) {
@@ -202,21 +186,6 @@ export function TreeContextMenu({ node, position, onClose }: TreeContextMenuProp
           Rename
           <span className="context-menu-shortcut">F2</span>
         </button>
-      )}
-
-      {/* Connect/Disconnect - only for routers and boards */}
-      {isConnectable && !showNewFolderInput && (
-        <>
-          {!isConnected ? (
-            <button className="context-menu-item" onClick={handleConnect}>
-              Connect
-            </button>
-          ) : (
-            <button className="context-menu-item" onClick={handleDisconnect}>
-              Disconnect
-            </button>
-          )}
-        </>
       )}
 
       {/* Scan Boards - only for connected routers */}

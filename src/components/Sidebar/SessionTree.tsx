@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Tree, NodeRendererProps, MoveHandler } from "react-arborist";
 import { TreeNodeData, RouterNode, LinuxBoardNode, FolderNode } from "../../types/session";
 import { useSessionTreeStore } from "../../stores/sessionTreeStore";
-import { useTabStore } from "../../stores/tabStore";
+import { useTabStore, ConnectionConfig } from "../../stores/tabStore";
 import { TreeContextMenu } from "./TreeContextMenu";
 
 interface ContextMenuState {
@@ -47,6 +47,8 @@ function NodeRenderer({
       case "connecting":
       case "authenticating":
         return <span className="state-indicator state-connecting" />;
+      case "reconnecting":
+        return <span className="state-indicator state-reconnecting" title="Reconnecting..." />;
       case "error":
         return <span className="state-indicator state-error" />;
       default:
@@ -137,22 +139,43 @@ function NodeRenderer({
     const updatedNode = findNodeById(nodeData.id);
 
     if (updatedNode && updatedNode.type !== "folder" && sessionId) {
-      // Create label based on node type
+      // Create label and connection config based on node type
       let label: string;
+      let connectionConfig: ConnectionConfig;
+
       if (updatedNode.type === "router") {
         const router = updatedNode as RouterNode;
         label = `${router.mgmtIp}:${router.port}`;
+        connectionConfig = {
+          host: router.mgmtIp,
+          port: router.port,
+          protocol: router.protocol,
+          username: router.username,
+          password: router.password,
+        };
       } else {
         const board = updatedNode as LinuxBoardNode;
         label = board.name || board.ip;
+        // Get parent router for credentials
+        const parentRouter = [...useSessionTreeStore.getState().routers.values()].find(
+          (r) => r.boards.some((b) => b.id === board.id)
+        );
+        connectionConfig = {
+          host: board.ip,
+          port: board.protocol === "ssh" ? 22 : 23,
+          protocol: board.protocol,
+          username: parentRouter?.username || "",
+          password: parentRouter?.password || "",
+        };
       }
 
-      // Open a new tab
+      // Open a new tab with connection config for reconnection
       openTab(
         nodeData.id,
         sessionId,
         label,
-        (updatedNode as RouterNode | LinuxBoardNode).protocol
+        (updatedNode as RouterNode | LinuxBoardNode).protocol,
+        connectionConfig
       );
     }
   };
@@ -338,18 +361,40 @@ export function SessionTree() {
 
       if (updatedNode && updatedNode.type !== "folder" && sessionId) {
         let label: string;
+        let connectionConfig: ConnectionConfig;
+
         if (updatedNode.type === "router") {
           const router = updatedNode as RouterNode;
           label = `${router.mgmtIp}:${router.port}`;
+          connectionConfig = {
+            host: router.mgmtIp,
+            port: router.port,
+            protocol: router.protocol,
+            username: router.username,
+            password: router.password,
+          };
         } else {
           const board = updatedNode as LinuxBoardNode;
           label = board.name || board.ip;
+          // Get parent router for credentials
+          const parentRouter = [...useSessionTreeStore.getState().routers.values()].find(
+            (r) => r.boards.some((b) => b.id === board.id)
+          );
+          connectionConfig = {
+            host: board.ip,
+            port: board.protocol === "ssh" ? 22 : 23,
+            protocol: board.protocol,
+            username: parentRouter?.username || "",
+            password: parentRouter?.password || "",
+          };
         }
+
         openTab(
           nodeData.id,
           sessionId,
           label,
-          (updatedNode as RouterNode | LinuxBoardNode).protocol
+          (updatedNode as RouterNode | LinuxBoardNode).protocol,
+          connectionConfig
         );
       }
     },

@@ -22,7 +22,35 @@ pub enum SessionState {
     Authenticating,
     Ready,
     Disconnected,
+    Reconnecting,
     Error,
+}
+
+/// Policy for automatic reconnection with exponential backoff
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReconnectPolicy {
+    /// Whether auto-reconnect is enabled
+    pub enabled: bool,
+    /// Maximum number of retry attempts before giving up
+    pub max_retries: u32,
+    /// Initial delay before first retry (in milliseconds)
+    pub initial_delay_ms: u64,
+    /// Maximum delay between retries (in milliseconds)
+    pub max_delay_ms: u64,
+    /// Multiplier for exponential backoff
+    pub backoff_multiplier: f64,
+}
+
+impl Default for ReconnectPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_retries: 10,
+            initial_delay_ms: 2000,
+            max_delay_ms: 60000,
+            backoff_multiplier: 1.5,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

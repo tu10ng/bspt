@@ -14,6 +14,8 @@ import {
   SessionConfig,
   VrpEvent,
   VrpBoardInfo,
+  ReconnectStatus,
+  ReconnectPolicy,
 } from "../types/session";
 
 interface SessionTreeState {
@@ -25,6 +27,9 @@ interface SessionTreeState {
 
   // VRP event listeners
   vrpListeners: Map<string, UnlistenFn>;
+
+  // Reconnection state
+  reconnectListeners: Map<string, UnlistenFn>;
 
   // Actions - CRUD Routers
   addRouter: (router: Omit<RouterNode, "id" | "type" | "boards" | "connectionState" | "sessionId" | "vrpView" | "parentId" | "order">) => string;
@@ -56,6 +61,11 @@ interface SessionTreeState {
   scanBoards: (routerId: string) => Promise<void>;
   switchProtocol: (nodeId: string, protocol: Protocol) => void;
 
+  // Actions - Reconnection
+  reconnectNode: (nodeId: string, config?: SessionConfig) => Promise<string | null>;
+  cancelReconnect: (nodeId: string) => Promise<void>;
+  getConnectionConfig: (nodeId: string) => SessionConfig | null;
+
   // Helpers
   getTreeData: () => TreeNodeData[];
   findNodeById: (id: string) => RouterNode | LinuxBoardNode | FolderNode | null;
@@ -84,6 +94,7 @@ export const useSessionTreeStore = create<SessionTreeState>()(
       activeNodeId: null,
       activeSessionId: null,
       vrpListeners: new Map(),
+      reconnectListeners: new Map(),
 
       // Helper to get next order number
       getNextOrder: (parentId: string | null): number => {
@@ -653,6 +664,212 @@ export const useSessionTreeStore = create<SessionTreeState>()(
           const parentRouter = findRouterByBoardId(routers, nodeId);
           if (parentRouter) {
             updateBoard(parentRouter.id, nodeId, { protocol });
+          }
+        }
+      },
+
+      // Reconnection actions
+      getConnectionConfig: (nodeId: string): SessionConfig | null => {
+        const { routers } = get();
+
+        // Check if it's a router
+        const router = routers.get(nodeId);
+        if (router) {
+          return {
+            host: router.mgmtIp,
+            port: router.port,
+            protocol: router.protocol,
+            username: router.username,
+            password: router.password,
+            cols: 80,
+            rows: 24,
+          };
+        }
+
+        // Check if it's a board
+        const parentRouter = findRouterByBoardId(routers, nodeId);
+        if (parentRouter) {
+          const board = parentRouter.boards.find((b) => b.id === nodeId);
+          if (board) {
+            return {
+              host: board.ip,
+              port: board.protocol === "ssh" ? 22 : 23,
+              protocol: board.protocol,
+              username: parentRouter.username,
+              password: parentRouter.password,
+              cols: 80,
+              rows: 24,
+            };
+          }
+        }
+
+        return null;
+      },
+
+      reconnectNode: async (nodeId: string, providedConfig?: SessionConfig): Promise<string | null> => {
+        const { routers, updateRouter, updateBoard, getConnectionConfig, reconnectListeners, vrpListeners } = get();
+
+        // Get connection config
+        const config = providedConfig || getConnectionConfig(nodeId);
+        if (!config) {
+          console.error("No connection config available for node:", nodeId);
+          return null;
+        }
+
+        // Determine if it's a router or board
+        const router = routers.get(nodeId);
+        const isRouter = !!router;
+        let routerId: string | null = null;
+
+        if (!isRouter) {
+          const parentRouter = findRouterByBoardId(routers, nodeId);
+          if (parentRouter) {
+            routerId = parentRouter.id;
+          } else {
+            console.error("Node not found:", nodeId);
+            return null;
+          }
+        }
+
+        // Update state to reconnecting
+        if (isRouter) {
+          updateRouter(nodeId, { connectionState: "reconnecting" });
+        } else {
+          updateBoard(routerId!, nodeId, { connectionState: "reconnecting" });
+        }
+
+        // Create a temporary session ID for the reconnection attempt
+        const tempSessionId = `reconnect-${nodeId}`;
+
+        try {
+          // Listen for reconnect status updates
+          const unlistenReconnect = await listen<ReconnectStatus>(
+            `session:${tempSessionId}:reconnect`,
+            (event) => {
+              console.log("Reconnect status:", event.payload);
+              // Could update UI with attempt count, etc.
+            }
+          );
+          reconnectListeners.set(nodeId, unlistenReconnect);
+
+          // Call backend reconnect
+          const policy: ReconnectPolicy = {
+            enabled: true,
+            maxRetries: 10,
+            initialDelayMs: 2000,
+            maxDelayMs: 60000,
+            backoffMultiplier: 1.5,
+          };
+
+          const newSessionId = await invoke<string>("reconnect_session", {
+            sessionId: tempSessionId,
+            config,
+            policy,
+          });
+
+          // Clean up reconnect listener
+          const unlisten = reconnectListeners.get(nodeId);
+          if (unlisten) {
+            unlisten();
+            reconnectListeners.delete(nodeId);
+          }
+
+          // Update state with new session
+          if (isRouter) {
+            updateRouter(nodeId, {
+              connectionState: "ready",
+              sessionId: newSessionId,
+            });
+
+            // Set up VRP event listener
+            const vrpUnlisten = await listen<VrpEvent>(
+              `session:${newSessionId}:vrp`,
+              (event) => {
+                const vrpEvent = event.payload;
+                if (vrpEvent.type === "view_change" && "view" in vrpEvent) {
+                  const viewData = vrpEvent as unknown as { view: VrpView; hostname: string };
+                  updateRouter(nodeId, { vrpView: viewData.view });
+                }
+              }
+            );
+            vrpListeners.set(nodeId, vrpUnlisten);
+          } else {
+            updateBoard(routerId!, nodeId, {
+              connectionState: "ready",
+              sessionId: newSessionId,
+            });
+          }
+
+          // Listen for state changes
+          await listen<ConnectionState>(
+            `session:${newSessionId}:state`,
+            (event) => {
+              const state = event.payload;
+              if (isRouter) {
+                updateRouter(nodeId, { connectionState: state });
+              } else {
+                updateBoard(routerId!, nodeId, { connectionState: state });
+              }
+
+              if (state === "disconnected" || state === "error") {
+                if (isRouter) {
+                  updateRouter(nodeId, { sessionId: null });
+                } else {
+                  updateBoard(routerId!, nodeId, { sessionId: null });
+                }
+              }
+            }
+          );
+
+          set({ activeNodeId: nodeId, activeSessionId: newSessionId });
+          return newSessionId;
+        } catch (error) {
+          console.error("Reconnection failed:", error);
+
+          // Clean up reconnect listener
+          const unlisten = reconnectListeners.get(nodeId);
+          if (unlisten) {
+            unlisten();
+            reconnectListeners.delete(nodeId);
+          }
+
+          // Update state to error
+          if (isRouter) {
+            updateRouter(nodeId, { connectionState: "error", sessionId: null });
+          } else {
+            updateBoard(routerId!, nodeId, { connectionState: "error", sessionId: null });
+          }
+
+          return null;
+        }
+      },
+
+      cancelReconnect: async (nodeId: string): Promise<void> => {
+        const { routers, updateRouter, updateBoard, reconnectListeners } = get();
+
+        // Cancel the reconnection
+        const tempSessionId = `reconnect-${nodeId}`;
+        try {
+          await invoke("cancel_reconnect", { sessionId: tempSessionId });
+        } catch (error) {
+          console.error("Failed to cancel reconnection:", error);
+        }
+
+        // Clean up listener
+        const unlisten = reconnectListeners.get(nodeId);
+        if (unlisten) {
+          unlisten();
+          reconnectListeners.delete(nodeId);
+        }
+
+        // Update state
+        const router = routers.get(nodeId);
+        if (router) {
+          updateRouter(nodeId, { connectionState: "disconnected", sessionId: null });
+        } else {
+          const parentRouter = findRouterByBoardId(routers, nodeId);
+          if (parentRouter) {
+            updateBoard(parentRouter.id, nodeId, { connectionState: "disconnected", sessionId: null });
           }
         }
       },

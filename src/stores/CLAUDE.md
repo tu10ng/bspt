@@ -58,8 +58,10 @@ Session tree management with VRP event handling:
 
 **Connection Actions:**
 - `connectNode(nodeId)` - Create session via Tauri IPC
-- `disconnectNode(nodeId)` - Close session
+- `disconnectNode(nodeId)` - Close session (updates node state, use for sidebar disconnect)
 - `setActiveNode(nodeId)` - Select node for terminal display
+
+**Note:** For tab-based disconnect, use `invoke("disconnect_session")` directly with the tab's `sessionId` to avoid affecting other tabs sharing the same node. See `TerminalArea.tsx` for implementation.
 
 **VRP Actions:**
 - `scanBoards(routerId)` - Send `display device` command
@@ -128,6 +130,13 @@ interface Tab {
 - `setActiveTab(tabId)` - Switch to tab
 - `reorderTabs(dragId, dropId)` - Drag-drop reorder
 - `getTabByNodeId(nodeId)` / `getTabBySessionId(sessionId)` - Lookups
+- `updateTabSessionId(tabId, sessionId)` - Update tab's session (used for reconnect/disconnect)
+
+**Multi-Tab Architecture:**
+Multiple tabs can share the same `nodeId` but have independent `sessionId`s. Each tab's connection state is determined by its own `sessionId`, NOT the node's `connectionState` in sessionTreeStore. This allows:
+- Opening multiple tabs to the same host
+- Disconnecting one tab without affecting others
+- Independent reconnection per tab
 
 **Tab Close Event:**
 When `closeTab` is called, it dispatches a custom event for terminal pool cleanup:

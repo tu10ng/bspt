@@ -35,6 +35,26 @@ Container for multi-tab terminal management:
 - Uses CSS `display: none/block` for visibility control
 - Preserves terminal content across tab switches
 - Sets up tab close listener for pool cleanup
+- Handles tab reconnect/disconnect via Tauri IPC
+
+**Tab Disconnect:** Disconnects individual sessions directly via `invoke("disconnect_session")` using the tab's own `sessionId`. Does NOT use `disconnectNode()` to avoid affecting other tabs sharing the same node.
+
+### Terminal/TabBar.tsx
+Chrome-style tab bar with drag-drop reordering:
+- Protocol badges: `[S]` SSH, `[T]` Telnet
+- Connection state per-tab (based on `tab.sessionId`, not node state)
+- Reconnect button for disconnected tabs
+- Right-click context menu (TabContextMenu)
+- Drag-drop tab reordering
+
+**Connection State:** Each tab's connection status is determined solely by `!!tab.sessionId`. This allows multiple tabs for the same node to have independent connection states.
+
+### Terminal/TabContextMenu.tsx
+Context menu for tabs:
+- Connect / Disconnect
+- Close Tab
+
+Uses `createPortal` to render at document body level, ensuring correct `position: fixed` behavior regardless of ancestor CSS transforms.
 
 ### Terminal/UnifiedTerminal.tsx
 xterm.js wrapper with WebGL rendering and instance pooling:
