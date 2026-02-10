@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTabStore } from "../../stores/tabStore";
 import { useBlockStore } from "../../stores/blockStore";
-import { useSessionTreeStore } from "../../stores/sessionTreeStore";
+import { useDeviceTreeStore } from "../../stores/deviceTreeStore";
 import { RouterNode, LinuxBoardNode } from "../../types/session";
 import { setupTabCloseListener } from "../../hooks";
 import { TabBar } from "./TabBar";
@@ -15,7 +15,7 @@ interface TerminalAreaProps {
 export function TerminalArea({ activeMarkerId }: TerminalAreaProps) {
   const { tabs, activeTabId, setActiveTab, closeTab, reorderTabs, updateTabSessionId } = useTabStore();
   const { activeMarkerId: blockActiveMarkerId } = useBlockStore();
-  const { connectNode, findNodeById } = useSessionTreeStore();
+  const { connectNode, findNodeById } = useDeviceTreeStore();
 
   // Setup tab close listener for terminal pool cleanup
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import { TreeNodeData } from "../../types/session";
-import { useSessionTreeStore } from "../../stores/sessionTreeStore";
+import { useDeviceTreeStore } from "../../stores/deviceTreeStore";
 
 interface TreeContextMenuProps {
   node: TreeNodeData;
@@ -22,7 +22,7 @@ export function TreeContextMenu({ node, position, onClose }: TreeContextMenuProp
     switchProtocol,
     routers,
     addFolder,
-  } = useSessionTreeStore();
+  } = useDeviceTreeStore();
 
   const nodeData = node.nodeData;
   const isRoot = node.id === "__root__";

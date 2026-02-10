@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Tree, NodeRendererProps, MoveHandler } from "react-arborist";
 import { TreeNodeData, RouterNode, LinuxBoardNode, FolderNode } from "../../types/session";
-import { useSessionTreeStore } from "../../stores/sessionTreeStore";
+import { useDeviceTreeStore } from "../../stores/deviceTreeStore";
 import { useTabStore, ConnectionConfig } from "../../stores/tabStore";
 import { TreeContextMenu } from "./TreeContextMenu";
 
@@ -16,7 +16,7 @@ function NodeRenderer({
   dragHandle,
 }: NodeRendererProps<TreeNodeData>) {
   const { activeNodeId, setActiveNode, connectNode, findNodeById, renameNode } =
-    useSessionTreeStore();
+    useDeviceTreeStore();
   const { openTab, setActiveTab, getTabByNodeId } = useTabStore();
   const nodeData = node.data.nodeData;
   const isRouter = nodeData.type === "router";
@@ -157,7 +157,7 @@ function NodeRenderer({
         const board = updatedNode as LinuxBoardNode;
         label = board.name || board.ip;
         // Get parent router for credentials
-        const parentRouter = [...useSessionTreeStore.getState().routers.values()].find(
+        const parentRouter = [...useDeviceTreeStore.getState().routers.values()].find(
           (r) => r.boards.some((b) => b.id === board.id)
         );
         connectionConfig = {
@@ -261,7 +261,7 @@ function NodeRenderer({
   );
 }
 
-export function SessionTree() {
+export function DeviceTree() {
   const {
     getTreeData,
     connectNode,
@@ -269,7 +269,7 @@ export function SessionTree() {
     moveNode,
     folders,
     addFolder,
-  } = useSessionTreeStore();
+  } = useDeviceTreeStore();
   const { openTab } = useTabStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
@@ -377,7 +377,7 @@ export function SessionTree() {
           const board = updatedNode as LinuxBoardNode;
           label = board.name || board.ip;
           // Get parent router for credentials
-          const parentRouter = [...useSessionTreeStore.getState().routers.values()].find(
+          const parentRouter = [...useDeviceTreeStore.getState().routers.values()].find(
             (r) => r.boards.some((b) => b.id === board.id)
           );
           connectionConfig = {
@@ -446,12 +446,12 @@ export function SessionTree() {
   if (treeData.length === 0) {
     return (
       <div
-        className="session-tree-empty"
+        className="device-tree-empty"
         onContextMenu={handleContainerContextMenu}
       >
-        <div className="session-tree-actions">
+        <div className="device-tree-actions">
           <button
-            className="session-tree-action-btn"
+            className="device-tree-action-btn"
             onClick={handleAddFolder}
             title="New Folder"
           >
@@ -467,12 +467,12 @@ export function SessionTree() {
 
   return (
     <div
-      className="session-tree-container"
+      className="device-tree-container"
       onContextMenu={handleContainerContextMenu}
     >
-      <div className="session-tree-actions">
+      <div className="device-tree-actions">
         <button
-          className="session-tree-action-btn"
+          className="device-tree-action-btn"
           onClick={handleAddFolder}
           title="New Folder"
         >
@@ -505,7 +505,7 @@ export function SessionTree() {
 
       {/* Empty area for right-click when tree has items but user clicks below */}
       <div
-        className="session-tree-empty-area"
+        className="device-tree-empty-area"
         onContextMenu={handleContainerContextMenu}
         style={{ minHeight: 50, flex: 1 }}
       />
@@ -521,4 +521,4 @@ export function SessionTree() {
   );
 }
 
-export default SessionTree;
+export default DeviceTree;

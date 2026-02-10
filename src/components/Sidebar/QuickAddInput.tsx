@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { useSessionTreeStore } from "../../stores/sessionTreeStore";
+import { useDeviceTreeStore } from "../../stores/deviceTreeStore";
 import { useTabStore } from "../../stores/tabStore";
 import { Protocol, RouterNode } from "../../types/session";
 
@@ -77,7 +77,7 @@ export function QuickAddInput({ onConnect }: QuickAddInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
-  const { routers, addRouter, connectNode, findNodeById } = useSessionTreeStore();
+  const { routers, addRouter, connectNode, findNodeById } = useDeviceTreeStore();
   const { openTab } = useTabStore();
 
   // Get existing sessions for fuzzy search

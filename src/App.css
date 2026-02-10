@@ -332,21 +332,21 @@
 }
 
 /* Session Tree Styles */
-.session-tree-container {
+.device-tree-container {
   flex: 1;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.session-tree-actions {
+.device-tree-actions {
   display: flex;
   gap: 4px;
   padding: 4px 8px;
   border-bottom: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
 }
 
-.session-tree-action-btn {
+.device-tree-action-btn {
   padding: 4px 8px;
   background: var(--color-surface-tertiary, #333);
   border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
@@ -357,12 +357,12 @@
   transition: all 0.15s;
 }
 
-.session-tree-action-btn:hover {
+.device-tree-action-btn:hover {
   background: var(--color-surface-secondary, #222);
   color: var(--color-text-primary, #fff);
 }
 
-.session-tree-empty {
+.device-tree-empty {
   padding: 16px;
   text-align: center;
   color: var(--color-text-muted);
@@ -370,7 +370,7 @@
   flex: 1;
 }
 
-.session-tree-empty-area {
+.device-tree-empty-area {
   flex: 1;
   min-height: 50px;
 }

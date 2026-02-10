@@ -1,11 +1,11 @@
 import "./App.css";
 import { useThemeStore } from "./stores/themeStore";
-import { useSessionTreeStore } from "./stores/sessionTreeStore";
+import { useDeviceTreeStore } from "./stores/deviceTreeStore";
 import { useBlockStore } from "./stores/blockStore";
 import { useTabStore } from "./stores/tabStore";
 import { ThemeControls } from "./components/ThemeControls";
 import { Outline, TerminalArea } from "./components/Terminal";
-import { SessionTree, QuickAddInput } from "./components/Sidebar";
+import { DeviceTree, QuickAddInput } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
 import { FlowPanel } from "./components/Panel";
 import { useState, useCallback, useEffect } from "react";
@@ -13,7 +13,7 @@ import { useTracerStore } from "./stores/tracerStore";
 
 function App() {
   const { opacity, blur } = useThemeStore();
-  const { findNodeById } = useSessionTreeStore();
+  const { findNodeById } = useDeviceTreeStore();
   const { activeMarkerId, setActiveMarker } = useBlockStore();
   const { tabs, activeTabId, getDisconnectedTabs } = useTabStore();
   const { traceEvents, indexDirectory, indexed, indexing, sourcePath } = useTracerStore();
@@ -69,13 +69,13 @@ function App() {
 
       {/* Sidebar - Session Tree */}
       <aside className="sidebar">
-        <div className="sidebar-title">Sessions</div>
+        <div className="sidebar-title">设备资源树</div>
 
         {/* Quick Add Input - compact connection input */}
         <QuickAddInput />
 
-        {/* Session Tree */}
-        <SessionTree />
+        {/* Device Tree */}
+        <DeviceTree />
       </aside>
 
       {/* Terminal - Main Content Area with TabBar */}

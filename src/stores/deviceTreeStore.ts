@@ -18,7 +18,7 @@ import {
   ReconnectPolicy,
 } from "../types/session";
 
-interface SessionTreeState {
+interface DeviceTreeState {
   // Data
   routers: Map<string, RouterNode>;
   folders: Map<string, FolderNode>;
@@ -86,7 +86,7 @@ function findRouterByBoardId(
   return null;
 }
 
-export const useSessionTreeStore = create<SessionTreeState>()(
+export const useDeviceTreeStore = create<DeviceTreeState>()(
   persist(
     (set, get) => ({
       routers: new Map(),
