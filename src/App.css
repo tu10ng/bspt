@@ -337,6 +337,9 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .device-tree-actions {
@@ -1885,4 +1888,549 @@
   border-radius: 3px;
   font-size: 10px;
   font-weight: 600;
+}
+
+/* ========================================
+   AddDeviceInputs Styles
+   ======================================== */
+
+.add-device-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.add-device-section {
+  position: relative;
+}
+
+.add-device-input-row {
+  display: flex;
+  gap: 4px;
+}
+
+.add-device-field {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--color-surface-tertiary, #2a2a2a);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-primary, #fff);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.add-device-field:focus {
+  border-color: var(--color-accent-primary, #50fa7b);
+}
+
+.add-device-field::placeholder {
+  color: var(--color-text-muted, #666);
+}
+
+.add-device-btn {
+  padding: 8px 12px;
+  background: var(--color-accent-primary, #50fa7b);
+  border: none;
+  border-radius: 4px;
+  color: #000;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.add-device-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.add-device-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.add-device-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 4px;
+  background: var(--color-surface-primary, #1e1e1e);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  z-index: 100;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.add-device-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.add-device-suggestion:hover,
+.add-device-suggestion.selected {
+  background: var(--color-surface-tertiary, #2a2a2a);
+}
+
+.add-device-suggestion.connected {
+  background: rgba(80, 250, 123, 0.1);
+}
+
+/* ========================================
+   ParseConfirmDialog Styles
+   ======================================== */
+
+.parse-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.parse-dialog {
+  width: 380px;
+  max-width: 90vw;
+  max-height: 80vh;
+  background: var(--color-surface-primary, #1e1e1e);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.parse-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+}
+
+.parse-dialog-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary, #fff);
+}
+
+.parse-dialog-close {
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted, #888);
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.parse-dialog-close:hover {
+  background: var(--color-surface-tertiary, #333);
+  color: var(--color-text-primary, #fff);
+}
+
+.parse-dialog-content {
+  padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.parse-dialog-desc {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: var(--color-text-secondary, #888);
+}
+
+.parse-dialog-section {
+  margin-bottom: 16px;
+}
+
+.parse-dialog-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary, #888);
+  margin-bottom: 8px;
+}
+
+.parse-dialog-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--color-surface-tertiary, #2a2a2a);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-primary, #fff);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.parse-dialog-input:focus {
+  border-color: var(--color-accent-primary, #50fa7b);
+}
+
+.parse-dialog-password-wrapper {
+  display: flex;
+  gap: 8px;
+}
+
+.parse-dialog-password-wrapper .parse-dialog-input {
+  flex: 1;
+}
+
+.parse-dialog-password-toggle {
+  padding: 8px 12px;
+  background: var(--color-surface-tertiary, #2a2a2a);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-secondary, #888);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.parse-dialog-password-toggle:hover {
+  background: var(--color-surface-secondary, #1e1e1e);
+  color: var(--color-text-primary, #fff);
+}
+
+.parse-dialog-ip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.parse-dialog-ip-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--color-surface-tertiary, #2a2a2a);
+  border-radius: 4px;
+}
+
+.parse-dialog-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  cursor: pointer;
+}
+
+.parse-dialog-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.parse-dialog-ip {
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  color: var(--color-text-primary, #fff);
+}
+
+.parse-dialog-type-select {
+  padding: 4px 8px;
+  background: var(--color-surface-secondary, #1e1e1e);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-primary, #fff);
+  font-size: 11px;
+  cursor: pointer;
+  outline: none;
+}
+
+.parse-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px;
+  border-top: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+}
+
+.parse-dialog-btn-cancel {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-secondary, #888);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.parse-dialog-btn-cancel:hover {
+  background: var(--color-surface-tertiary, #333);
+  color: var(--color-text-primary, #fff);
+}
+
+.parse-dialog-btn-confirm {
+  padding: 8px 16px;
+  background: var(--color-accent-primary, #50fa7b);
+  border: none;
+  border-radius: 4px;
+  color: #000;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.parse-dialog-btn-confirm:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.parse-dialog-btn-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========================================
+   VS Code Style ASCII Tree UI
+   ======================================== */
+
+/* Tree Row - unified style for all node types */
+.tree-node-row {
+  display: flex;
+  align-items: center;
+  padding: 2px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.1s;
+  user-select: none;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tree-node-row:hover {
+  background: var(--color-surface-tertiary, rgba(255, 255, 255, 0.05));
+}
+
+.tree-node-row.active {
+  background: var(--color-accent-primary, #50fa7b);
+  color: #000;
+}
+
+.tree-node-row.active .tree-name,
+.tree-node-row.active .tree-prefix,
+.tree-node-row.active .tree-arrow {
+  color: #000;
+}
+
+/* ASCII tree prefix - gray monospace */
+.tree-prefix {
+  color: var(--color-text-muted, #666);
+  white-space: pre;
+  font-family: var(--font-mono, monospace);
+  flex-shrink: 0;
+}
+
+/* Expand/collapse arrow */
+.tree-arrow {
+  width: 16px;
+  text-align: center;
+  color: var(--color-text-secondary, #aaa);
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+/* Node name */
+.tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary, #fff);
+}
+
+/* Slot suffix / */
+.tree-name.slot::after {
+  content: "/";
+  color: var(--color-text-muted, #666);
+  margin-left: 1px;
+}
+
+/* Status indicator - ● connected, ○ disconnected */
+.tree-status {
+  margin-left: auto;
+  padding-left: 8px;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.tree-status.connected {
+  color: #50fa7b;
+}
+
+.tree-status.connecting {
+  color: #f1fa8c;
+  animation: pulse 1s infinite;
+}
+
+.tree-status.error {
+  color: #ff5555;
+}
+
+.tree-status.disconnected {
+  color: #666;
+}
+
+/* Protocol label - only on routers */
+.tree-protocol {
+  font-size: 10px;
+  color: var(--color-text-muted, #888);
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+/* VRP view indicator */
+.tree-vrp {
+  font-size: 10px;
+  color: #50fa7b;
+  font-family: var(--font-mono, monospace);
+  margin-left: 4px;
+}
+
+/* Ghost slot - dashed style */
+.tree-ghost {
+  color: var(--color-text-muted, #666);
+  font-style: italic;
+  border: 1px dashed var(--color-text-muted, #666);
+  border-radius: 4px;
+  margin: 4px 8px;
+  padding: 4px 8px;
+}
+
+.tree-ghost:hover,
+.tree-ghost.drag-over {
+  border-color: var(--color-accent-primary, #50fa7b);
+  color: var(--color-accent-primary, #50fa7b);
+  background: rgba(80, 250, 123, 0.05);
+}
+
+/* Slot Input Dialog */
+.slot-input-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.slot-input-content {
+  width: 300px;
+  padding: 20px;
+  background: var(--color-surface-primary, #1e1e1e);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.slot-input-title {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-primary, #fff);
+}
+
+.slot-input-field {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--color-surface-tertiary, #2a2a2a);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-primary, #fff);
+  font-size: 14px;
+  outline: none;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+
+.slot-input-field:focus {
+  border-color: var(--color-accent-primary, #50fa7b);
+}
+
+.slot-input-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.slot-input-cancel {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-secondary, #888);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.slot-input-confirm {
+  padding: 8px 16px;
+  background: var(--color-accent-primary, #50fa7b);
+  border: none;
+  border-radius: 4px;
+  color: #000;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* Protocol Toggle in ParseConfirmDialog */
+.parse-dialog-protocol-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.parse-dialog-protocol-btn {
+  flex: 1;
+  padding: 8px 16px;
+  background: var(--color-surface-tertiary, #2a2a2a);
+  border: 1px solid var(--color-glass-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--color-text-secondary, #888);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.parse-dialog-protocol-btn:hover {
+  background: var(--color-surface-secondary, #1e1e1e);
+  color: var(--color-text-primary, #fff);
+}
+
+.parse-dialog-protocol-btn.active {
+  background: var(--color-accent-primary, #50fa7b);
+  border-color: var(--color-accent-primary, #50fa7b);
+  color: #000;
+}
+
+.parse-dialog-protocol-btn.active:hover {
+  opacity: 0.9;
 }

@@ -13,7 +13,8 @@ interface TabContextMenuProps {
 }
 
 export function TabContextMenu({
-  tab,
+  // tab is available for future use (e.g., showing tab-specific info)
+  tab: _tab,
   position,
   isConnected,
   onClose,

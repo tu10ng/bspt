@@ -5,7 +5,7 @@ import { useBlockStore } from "./stores/blockStore";
 import { useTabStore } from "./stores/tabStore";
 import { ThemeControls } from "./components/ThemeControls";
 import { Outline, TerminalArea } from "./components/Terminal";
-import { DeviceTree, QuickAddInput } from "./components/Sidebar";
+import { DeviceTree, AddDeviceInputs } from "./components/Sidebar";
 import { CommandBar } from "./components/CommandBar";
 import { FlowPanel } from "./components/Panel";
 import { useState, useCallback, useEffect } from "react";
@@ -71,8 +71,8 @@ function App() {
       <aside className="sidebar">
         <div className="sidebar-title">设备资源树</div>
 
-        {/* Quick Add Input - compact connection input */}
-        <QuickAddInput />
+        {/* Add Device Inputs - auto-detect and SSH quick connect */}
+        <AddDeviceInputs />
 
         {/* Device Tree */}
         <DeviceTree />
@@ -171,13 +171,13 @@ function App() {
       <footer className="footer">
         <div className="footer-left">
           <span>
-            {activeNode && activeNode.type !== "folder"
+            {activeNode && activeNode.type !== "folder" && activeNode.type !== "slot"
               ? activeNode.connectionState
               : "No session"}
           </span>
         </div>
         <div className="footer-right">
-          <span>{activeNode && activeNode.type !== "folder" ? activeNode.protocol.toUpperCase() : "-"}</span>
+          <span>{activeNode && activeNode.type !== "folder" && activeNode.type !== "slot" ? activeNode.protocol.toUpperCase() : "-"}</span>
           <span>UTF-8</span>
         </div>
       </footer>

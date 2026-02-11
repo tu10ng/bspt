@@ -1,13 +1,116 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { Tree, NodeRendererProps, MoveHandler } from "react-arborist";
-import { TreeNodeData, RouterNode, LinuxBoardNode, FolderNode } from "../../types/session";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { Tree, NodeRendererProps, MoveHandler, NodeApi } from "react-arborist";
+import {
+  TreeNodeData,
+  RouterNode,
+  LinuxBoardNode,
+  FolderNode,
+  SlotNode,
+} from "../../types/session";
 import { useDeviceTreeStore } from "../../stores/deviceTreeStore";
 import { useTabStore, ConnectionConfig } from "../../stores/tabStore";
 import { TreeContextMenu } from "./TreeContextMenu";
 
+// ASCII tree line characters
+const TREE_LINE = "│";
+const TREE_BRANCH = "├─";
+const TREE_LAST = "└─";
+const TREE_SPACE = "  ";
+
 interface ContextMenuState {
   node: TreeNodeData;
   position: { x: number; y: number };
+}
+
+interface SlotInputDialogProps {
+  routerId: string;
+  onConfirm: (slotId: string, name: string) => void;
+  onCancel: () => void;
+}
+
+function SlotInputDialog({ onConfirm, onCancel }: SlotInputDialogProps) {
+  const [slotName, setSlotName] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onCancel();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onCancel]);
+
+  const handleConfirm = () => {
+    if (slotName.trim()) {
+      onConfirm(slotName.trim(), slotName.trim());
+    }
+  };
+
+  return createPortal(
+    <div className="slot-input-dialog" onClick={onCancel}>
+      <div className="slot-input-content" onClick={(e) => e.stopPropagation()}>
+        <h3 className="slot-input-title">Create New Slot</h3>
+        <input
+          ref={inputRef}
+          type="text"
+          className="slot-input-field"
+          placeholder="Slot name (e.g., 21, meth)"
+          value={slotName}
+          onChange={(e) => setSlotName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleConfirm();
+            }
+          }}
+        />
+        <div className="slot-input-buttons">
+          <button className="slot-input-cancel" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            className="slot-input-confirm"
+            onClick={handleConfirm}
+            disabled={!slotName.trim()}
+          >
+            Create
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// Helper to compute tree prefix based on node ancestry
+function computeTreePrefix(node: NodeApi<TreeNodeData>): string {
+  const levels: boolean[] = []; // true = is last child at that level
+  let current: NodeApi<TreeNodeData> | null = node;
+
+  // Walk up the tree to determine ancestry
+  while (current && current.parent) {
+    const siblings = current.parent.children || [];
+    const isLast = siblings[siblings.length - 1]?.id === current.id;
+    levels.unshift(isLast);
+    current = current.parent;
+  }
+
+  if (levels.length === 0) return "";
+
+  let prefix = "";
+  for (let i = 0; i < levels.length - 1; i++) {
+    prefix += levels[i] ? TREE_SPACE : TREE_LINE + " ";
+  }
+  prefix += levels[levels.length - 1] ? TREE_LAST : TREE_BRANCH;
+
+  return prefix;
 }
 
 function NodeRenderer({
@@ -15,17 +118,32 @@ function NodeRenderer({
   style,
   dragHandle,
 }: NodeRendererProps<TreeNodeData>) {
-  const { activeNodeId, setActiveNode, connectNode, findNodeById, renameNode } =
-    useDeviceTreeStore();
+  const {
+    activeNodeId,
+    setActiveNode,
+    connectNode,
+    findNodeById,
+    renameNode,
+    setDraggingNodeId,
+    addSlot,
+    moveBoardToSlot,
+  } = useDeviceTreeStore();
   const { openTab, setActiveTab, getTabByNodeId } = useTabStore();
   const nodeData = node.data.nodeData;
   const isRouter = nodeData.type === "router";
   const isFolder = nodeData.type === "folder";
   const isBoard = nodeData.type === "board";
+  const isSlot = nodeData.type === "slot";
+  const isGhostSlot = isSlot && (nodeData as SlotNode).isGhost;
   const isActive = activeNodeId === nodeData.id;
+
+  // Compute ASCII tree prefix
+  const treePrefix = useMemo(() => computeTreePrefix(node), [node]);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(node.data.name);
+  const [showSlotDialog, setShowSlotDialog] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus input when editing starts
@@ -36,44 +154,31 @@ function NodeRenderer({
     }
   }, [isEditing]);
 
-  // Connection state indicator
+  // Connection state indicator - VS Code style dot
   const getStateIndicator = () => {
-    if (isFolder) return null;
+    if (isFolder || isSlot) return null;
     const connectable = nodeData as RouterNode | LinuxBoardNode;
-    switch (connectable.connectionState) {
-      case "ready":
-      case "connected":
-        return <span className="state-indicator state-connected" />;
-      case "connecting":
-      case "authenticating":
-        return <span className="state-indicator state-connecting" />;
-      case "reconnecting":
-        return <span className="state-indicator state-reconnecting" title="Reconnecting..." />;
-      case "error":
-        return <span className="state-indicator state-error" />;
-      default:
-        return <span className="state-indicator state-disconnected" />;
-    }
+    const isConnected = connectable.connectionState === "ready" || connectable.connectionState === "connected";
+    const isConnecting = connectable.connectionState === "connecting" ||
+                         connectable.connectionState === "authenticating" ||
+                         connectable.connectionState === "reconnecting";
+    const isError = connectable.connectionState === "error";
+
+    let statusClass = "tree-status disconnected";
+    if (isConnected) statusClass = "tree-status connected";
+    else if (isConnecting) statusClass = "tree-status connecting";
+    else if (isError) statusClass = "tree-status error";
+
+    return <span className={statusClass}>{isConnected ? "●" : "○"}</span>;
   };
 
-  // Protocol badge
+  // Protocol badge - only shown on routers
   const getProtocolBadge = () => {
-    if (isFolder) return null;
-    const connectable = nodeData as RouterNode | LinuxBoardNode;
-    const protocol = connectable.protocol.toUpperCase();
+    if (!isRouter) return null;
+    const router = nodeData as RouterNode;
     return (
-      <span className={`protocol-badge protocol-${connectable.protocol}`}>
-        [{protocol.charAt(0)}]
-      </span>
-    );
-  };
-
-  // Folder icon
-  const getFolderIcon = () => {
-    if (!isFolder) return null;
-    return (
-      <span className="tree-node-icon">
-        {node.isOpen ? "\u{1F4C2}" : "\u{1F4C1}"}
+      <span className="tree-protocol">
+        {router.protocol.toUpperCase()}
       </span>
     );
   };
@@ -92,7 +197,7 @@ function NodeRenderer({
     };
 
     return (
-      <span className="vrp-indicator" title={`VRP ${router.vrpView} view`}>
+      <span className="tree-vrp" title={`VRP ${router.vrpView} view`}>
         {viewSymbols[router.vrpView] || ""}
       </span>
     );
@@ -100,11 +205,12 @@ function NodeRenderer({
 
   const handleClick = () => {
     if (isFolder) {
-      // Toggle folder open/close
       node.toggle();
-    } else {
+    } else if (isGhostSlot) {
+      // Show slot creation dialog
+      setShowSlotDialog(true);
+    } else if (!isSlot) {
       setActiveNode(nodeData.id);
-      // If already has a tab, switch to it
       const existingTab = getTabByNodeId(nodeData.id);
       if (existingTab) {
         setActiveTab(existingTab.id);
@@ -113,21 +219,19 @@ function NodeRenderer({
   };
 
   const handleDoubleClick = async () => {
-    if (isFolder) {
-      // Start rename on double-click for folders
-      setIsEditing(true);
+    if (isFolder || isSlot) {
+      if (!isGhostSlot) {
+        setIsEditing(true);
+      }
       return;
     }
 
-    // Always create a new connection and new tab on double-click
-    // One tree node can have multiple tabs (each with its own backend session)
     await connectNode(nodeData.id);
 
-    // Wait for session ID to be available (store update is async)
     const waitForSession = async (maxAttempts = 10): Promise<string | null> => {
       for (let i = 0; i < maxAttempts; i++) {
         const n = findNodeById(nodeData.id);
-        if (n && n.type !== "folder" && (n as RouterNode | LinuxBoardNode).sessionId) {
+        if (n && n.type !== "folder" && n.type !== "slot" && (n as RouterNode | LinuxBoardNode).sessionId) {
           return (n as RouterNode | LinuxBoardNode).sessionId;
         }
         await new Promise((r) => setTimeout(r, 100));
@@ -138,8 +242,7 @@ function NodeRenderer({
     const sessionId = await waitForSession();
     const updatedNode = findNodeById(nodeData.id);
 
-    if (updatedNode && updatedNode.type !== "folder" && sessionId) {
-      // Create label and connection config based on node type
+    if (updatedNode && updatedNode.type !== "folder" && updatedNode.type !== "slot" && sessionId) {
       let label: string;
       let connectionConfig: ConnectionConfig;
 
@@ -156,7 +259,6 @@ function NodeRenderer({
       } else {
         const board = updatedNode as LinuxBoardNode;
         label = board.name || board.ip;
-        // Get parent router for credentials
         const parentRouter = [...useDeviceTreeStore.getState().routers.values()].find(
           (r) => r.boards.some((b) => b.id === board.id)
         );
@@ -169,7 +271,6 @@ function NodeRenderer({
         };
       }
 
-      // Open a new tab with connection config for reconnection
       openTab(
         nodeData.id,
         sessionId,
@@ -208,31 +309,83 @@ function NodeRenderer({
     setIsEditing(false);
   };
 
-  const nodeClassName = [
-    "tree-node",
-    isActive ? "tree-node-active" : "",
-    isRouter ? "tree-node-router" : "",
-    isBoard ? "tree-node-board" : "",
-    isFolder ? "tree-node-folder" : "",
-    isEditing ? "tree-node-editing" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  // Handle drag start for boards
+  const handleDragStart = () => {
+    if (isBoard) {
+      setDraggingNodeId(nodeData.id);
+    }
+  };
 
-  return (
-    <div
-      ref={dragHandle}
-      style={style}
-      className={nodeClassName}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
-    >
-      <div className="tree-node-content">
-        {getFolderIcon()}
-        {getStateIndicator()}
-        {getProtocolBadge()}
+  const handleDragEnd = () => {
+    setDraggingNodeId(null);
+  };
+
+  // Handle drop on ghost slot
+  const handleGhostDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    setShowSlotDialog(true);
+  };
+
+  const handleSlotConfirm = (slotId: string, name: string) => {
+    if (isGhostSlot) {
+      const ghostSlot = nodeData as SlotNode;
+      const newSlotId = addSlot(ghostSlot.routerId, slotId, name);
+
+      // Move the dragged board to the new slot
+      const { draggingNodeId } = useDeviceTreeStore.getState();
+      if (draggingNodeId && newSlotId) {
+        moveBoardToSlot(draggingNodeId, slotId);
+      }
+    }
+    setShowSlotDialog(false);
+    setDraggingNodeId(null);
+  };
+
+  // Render ghost slot - simplified dashed box style
+  if (isGhostSlot) {
+    return (
+      <div
+        style={style}
+        className={`tree-node-row tree-ghost ${isDragOver ? "drag-over" : ""}`}
+        onClick={handleClick}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragOver(true);
+        }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={handleGhostDrop}
+      >
+        <span className="tree-prefix">{treePrefix}</span>
+        <span className="tree-name">+ New slot</span>
+        {showSlotDialog && (
+          <SlotInputDialog
+            routerId={(nodeData as SlotNode).routerId}
+            onConfirm={handleSlotConfirm}
+            onCancel={() => {
+              setShowSlotDialog(false);
+              setDraggingNodeId(null);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Render slot - with trailing /
+  if (isSlot) {
+    const slot = nodeData as SlotNode;
+    return (
+      <div
+        style={style}
+        className="tree-node-row"
+        onClick={() => node.toggle()}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+      >
+        <span className="tree-prefix">{treePrefix}</span>
+        <span className="tree-arrow">{node.isOpen ? "▼" : "▶"}</span>
         {isEditing ? (
           <input
             ref={inputRef}
@@ -245,18 +398,129 @@ function NodeRenderer({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <span className="tree-node-name">{node.data.name}</span>
+          <span className="tree-name slot">{slot.name}</span>
+        )}
+      </div>
+    );
+  }
+
+  // Render folder - VS Code style
+  if (isFolder) {
+    return (
+      <div
+        ref={dragHandle}
+        style={style}
+        className="tree-node-row"
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+      >
+        <span className="tree-prefix">{treePrefix}</span>
+        <span className="tree-arrow">{node.isOpen ? "▼" : "▶"}</span>
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            className="tree-node-edit-input"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleEditKeyDown}
+            onBlur={handleEditBlur}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="tree-name">{node.data.name}</span>
+        )}
+      </div>
+    );
+  }
+
+  // Render router - VS Code style with status and protocol
+  if (isRouter) {
+    const router = nodeData as RouterNode;
+    return (
+      <div
+        ref={dragHandle}
+        style={style}
+        className={`tree-node-row ${isActive ? "active" : ""}`}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+      >
+        <span className="tree-prefix">{treePrefix}</span>
+        <span className="tree-arrow">{node.isOpen ? "▼" : "▶"}</span>
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            className="tree-node-edit-input"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleEditKeyDown}
+            onBlur={handleEditBlur}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="tree-name">{router.name}</span>
         )}
         {getVrpIndicator()}
+        {getStateIndicator()}
+        {getProtocolBadge()}
       </div>
-      {isRouter && (nodeData as RouterNode).boards.length > 0 && (
-        <span className="tree-node-children-count">
-          {(nodeData as RouterNode).boards.length}
-        </span>
-      )}
-      {isFolder && node.children && node.children.length > 0 && (
-        <span className="tree-node-children-count">{node.children.length}</span>
-      )}
+    );
+  }
+
+  // Render board - VS Code style
+  if (isBoard) {
+    const board = nodeData as LinuxBoardNode;
+    return (
+      <div
+        ref={dragHandle}
+        style={style}
+        className={`tree-node-row ${isActive ? "active" : ""}`}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        draggable
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+      >
+        <span className="tree-prefix">{treePrefix}</span>
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            className="tree-node-edit-input"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleEditKeyDown}
+            onBlur={handleEditBlur}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span className="tree-name">{board.name || board.ip}</span>
+        )}
+        {getStateIndicator()}
+      </div>
+    );
+  }
+
+  // Fallback
+  return (
+    <div
+      ref={dragHandle}
+      style={style}
+      className={`tree-node-row ${isActive ? "active" : ""}`}
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+    >
+      <span className="tree-prefix">{treePrefix}</span>
+      <span className="tree-name">{node.data.name}</span>
     </div>
   );
 }
@@ -269,6 +533,7 @@ export function DeviceTree() {
     moveNode,
     folders,
     addFolder,
+    setDraggingNodeId,
   } = useDeviceTreeStore();
   const { openTab } = useTabStore();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -287,68 +552,61 @@ export function DeviceTree() {
     []
   );
 
-  // Handle right-click on empty area
-  const handleContainerContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      // Show context menu for creating folder at root level
-      setContextMenu({
-        node: {
+  const handleContainerContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({
+      node: {
+        id: "__root__",
+        name: "Root",
+        nodeData: {
+          type: "folder",
           id: "__root__",
           name: "Root",
-          nodeData: { type: "folder", id: "__root__", name: "Root", parentId: null, order: 0 } as FolderNode,
-        },
-        position: { x: e.clientX, y: e.clientY },
-      });
-    },
-    []
-  );
+          parentId: null,
+          order: 0,
+        } as FolderNode,
+      },
+      position: { x: e.clientX, y: e.clientY },
+    });
+  }, []);
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
   }, []);
 
-  // Handle drag and drop
   const handleMove: MoveHandler<TreeNodeData> = useCallback(
     ({ dragIds, parentId, index }) => {
       for (const dragId of dragIds) {
-        // Determine if target is a folder or root
         let targetParentId: string | null = null;
         if (parentId) {
           const targetNode = findNodeById(parentId);
-          // Can only drop into folders (or root)
           if (targetNode && targetNode.type === "folder") {
             targetParentId = parentId;
           } else if (targetNode && targetNode.type === "router") {
-            // Don't allow dropping into routers (boards are auto-managed)
             continue;
           }
         }
         moveNode(dragId, targetParentId, index);
       }
+      setDraggingNodeId(null);
     },
-    [moveNode, findNodeById]
+    [moveNode, findNodeById, setDraggingNodeId]
   );
 
-  // Handle double-click / activate (from react-arborist)
-  // Always create new connection and new tab
   const handleActivate = useCallback(
     async (node: { data: TreeNodeData }) => {
       const nodeData = node.data.nodeData;
 
-      // Skip folders
-      if (nodeData.type === "folder") {
+      if (nodeData.type === "folder" || nodeData.type === "slot") {
         return;
       }
 
-      // Always create a new connection - one node can have multiple tabs
       await connectNode(nodeData.id);
 
-      // Wait for session ID to be available (store update is async)
       const waitForSession = async (maxAttempts = 10): Promise<string | null> => {
         for (let i = 0; i < maxAttempts; i++) {
           const n = findNodeById(nodeData.id);
-          if (n && n.type !== "folder" && (n as RouterNode | LinuxBoardNode).sessionId) {
+          if (n && n.type !== "folder" && n.type !== "slot" && (n as RouterNode | LinuxBoardNode).sessionId) {
             return (n as RouterNode | LinuxBoardNode).sessionId;
           }
           await new Promise((r) => setTimeout(r, 100));
@@ -359,7 +617,7 @@ export function DeviceTree() {
       const sessionId = await waitForSession();
       const updatedNode = findNodeById(nodeData.id);
 
-      if (updatedNode && updatedNode.type !== "folder" && sessionId) {
+      if (updatedNode && updatedNode.type !== "folder" && updatedNode.type !== "slot" && sessionId) {
         let label: string;
         let connectionConfig: ConnectionConfig;
 
@@ -376,7 +634,6 @@ export function DeviceTree() {
         } else {
           const board = updatedNode as LinuxBoardNode;
           label = board.name || board.ip;
-          // Get parent router for credentials
           const parentRouter = [...useDeviceTreeStore.getState().routers.values()].find(
             (r) => r.boards.some((b) => b.id === board.id)
           );
@@ -401,7 +658,6 @@ export function DeviceTree() {
     [connectNode, findNodeById, openTab]
   );
 
-  // Check if node can be dropped on target
   const disableDrop = useCallback(
     ({
       parentNode,
@@ -410,23 +666,20 @@ export function DeviceTree() {
       parentNode: { data: TreeNodeData } | null;
       dragNodes: { data: TreeNodeData }[];
     }) => {
-      // Allow drop at root
       if (!parentNode) return false;
 
       const parentData = parentNode.data.nodeData;
 
-      // Only allow dropping into folders
       if (parentData.type !== "folder") {
         return true;
       }
 
-      // Prevent dropping folder into itself or its descendants
       for (const dragNode of dragNodes) {
         if (dragNode.data.nodeData.type === "folder") {
           let checkId: string | null = parentData.id;
           while (checkId) {
             if (checkId === dragNode.data.id) {
-              return true; // Would create cycle
+              return true;
             }
             const folder = folders.get(checkId);
             checkId = folder?.parentId ?? null;
@@ -484,8 +737,8 @@ export function DeviceTree() {
         openByDefault={true}
         width="100%"
         height={400}
-        indent={24}
-        rowHeight={36}
+        indent={0}
+        rowHeight={28}
         onActivate={handleActivate}
         onMove={handleMove}
         disableDrag={false}
@@ -494,7 +747,7 @@ export function DeviceTree() {
         {(props) => (
           <div
             onContextMenu={(e) => {
-              e.stopPropagation(); // Prevent bubbling to container
+              e.stopPropagation();
               handleContextMenu(e, props.node.data);
             }}
           >
@@ -503,7 +756,6 @@ export function DeviceTree() {
         )}
       </Tree>
 
-      {/* Empty area for right-click when tree has items but user clicks below */}
       <div
         className="device-tree-empty-area"
         onContextMenu={handleContainerContextMenu}

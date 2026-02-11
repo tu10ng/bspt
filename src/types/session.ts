@@ -40,12 +40,23 @@ export interface AuthProfile {
 export interface LinuxBoardNode {
   id: string;
   type: "board";
-  slotId: string;
+  slotId: string | null;  // null = directly under router, string = under specific slot
   ip: string;
   name: string;
   protocol: Protocol;
   connectionState: ConnectionState;
   sessionId: string | null;
+}
+
+// Slot node for organizing boards under a router
+export interface SlotNode {
+  id: string;
+  type: "slot";
+  routerId: string;
+  slotId: string;        // "meth", "21", "53" etc.
+  name: string;
+  order: number;
+  isGhost?: boolean;     // Ghost slot shown during drag
 }
 
 export interface RouterNode {
@@ -75,7 +86,7 @@ export interface FolderNode {
   order: number;            // sibling sort order
 }
 
-export type SessionTreeNode = RouterNode | LinuxBoardNode | FolderNode;
+export type SessionTreeNode = RouterNode | LinuxBoardNode | SlotNode | FolderNode;
 
 // react-arborist compatible tree data structure
 export interface TreeNodeData {

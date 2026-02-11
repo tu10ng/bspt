@@ -7,6 +7,7 @@ import {
   RouterNode,
   LinuxBoardNode,
   FolderNode,
+  SlotNode,
   Protocol,
   ConnectionState,
   VrpView,
@@ -22,8 +23,12 @@ interface DeviceTreeState {
   // Data
   routers: Map<string, RouterNode>;
   folders: Map<string, FolderNode>;
+  slots: Map<string, SlotNode>;
   activeNodeId: string | null;
   activeSessionId: string | null;
+
+  // Drag state for ghost slots
+  draggingNodeId: string | null;
 
   // VRP event listeners
   vrpListeners: Map<string, UnlistenFn>;
@@ -45,6 +50,15 @@ interface DeviceTreeState {
   addFolder: (name: string, parentId?: string | null) => string;
   updateFolder: (id: string, updates: Partial<FolderNode>) => void;
   removeFolder: (id: string) => void;
+
+  // Actions - CRUD Slots
+  addSlot: (routerId: string, slotId: string, name: string) => string | null;
+  updateSlot: (id: string, updates: Partial<SlotNode>) => void;
+  removeSlot: (id: string) => void;
+  moveBoardToSlot: (boardId: string, slotId: string | null) => void;
+
+  // Actions - Drag state
+  setDraggingNodeId: (nodeId: string | null) => void;
 
   // Actions - Drag & Drop
   moveNode: (nodeId: string, targetParentId: string | null, insertIndex: number) => void;
@@ -68,9 +82,10 @@ interface DeviceTreeState {
 
   // Helpers
   getTreeData: () => TreeNodeData[];
-  findNodeById: (id: string) => RouterNode | LinuxBoardNode | FolderNode | null;
+  findNodeById: (id: string) => RouterNode | LinuxBoardNode | FolderNode | SlotNode | null;
   getActiveSession: () => { node: RouterNode | LinuxBoardNode; sessionId: string } | null;
   getNextOrder: (parentId: string | null) => number;
+  getSlotNextOrder: (routerId: string) => number;
 }
 
 // Helper to find router containing a board
@@ -91,8 +106,10 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
     (set, get) => ({
       routers: new Map(),
       folders: new Map(),
+      slots: new Map(),
       activeNodeId: null,
       activeSessionId: null,
+      draggingNodeId: null,
       vrpListeners: new Map(),
       reconnectListeners: new Map(),
 
@@ -312,6 +329,89 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
         });
       },
 
+      // CRUD - Slots
+      addSlot: (routerId: string, slotId: string, name: string): string | null => {
+        const router = get().routers.get(routerId);
+        if (!router) return null;
+
+        const id = uuidv4();
+        const { getSlotNextOrder } = get();
+        const slot: SlotNode = {
+          id,
+          type: "slot",
+          routerId,
+          slotId,
+          name,
+          order: getSlotNextOrder(routerId),
+        };
+
+        set((state) => {
+          const slots = new Map(state.slots);
+          slots.set(id, slot);
+          return { slots };
+        });
+
+        return id;
+      },
+
+      updateSlot: (id: string, updates: Partial<SlotNode>) => {
+        set((state) => {
+          const slots = new Map(state.slots);
+          const slot = slots.get(id);
+          if (slot) {
+            slots.set(id, { ...slot, ...updates });
+          }
+          return { slots };
+        });
+      },
+
+      removeSlot: (id: string) => {
+        const { slots, routers, updateBoard } = get();
+        const slot = slots.get(id);
+        if (!slot) return;
+
+        // Move all boards in this slot to direct under router (slotId = null)
+        const router = routers.get(slot.routerId);
+        if (router) {
+          for (const board of router.boards) {
+            if (board.slotId === slot.slotId) {
+              updateBoard(slot.routerId, board.id, { slotId: null });
+            }
+          }
+        }
+
+        set((state) => {
+          const newSlots = new Map(state.slots);
+          newSlots.delete(id);
+          return { slots: newSlots };
+        });
+      },
+
+      moveBoardToSlot: (boardId: string, slotId: string | null) => {
+        const { routers, updateBoard } = get();
+        const parentRouter = findRouterByBoardId(routers, boardId);
+        if (parentRouter) {
+          updateBoard(parentRouter.id, boardId, { slotId });
+        }
+      },
+
+      // Drag state
+      setDraggingNodeId: (nodeId: string | null) => {
+        set({ draggingNodeId: nodeId });
+      },
+
+      // Helper to get next slot order
+      getSlotNextOrder: (routerId: string): number => {
+        const { slots } = get();
+        let maxOrder = -1;
+        for (const slot of slots.values()) {
+          if (slot.routerId === routerId) {
+            maxOrder = Math.max(maxOrder, slot.order);
+          }
+        }
+        return maxOrder + 1;
+      },
+
       // Drag & Drop
       moveNode: (nodeId: string, targetParentId: string | null, insertIndex: number) => {
         const { routers, folders, updateRouter, updateFolder } = get();
@@ -412,7 +512,7 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
 
       // Rename
       renameNode: (nodeId: string, newName: string) => {
-        const { routers, folders, updateRouter, updateFolder, updateBoard } = get();
+        const { routers, folders, slots, updateRouter, updateFolder, updateBoard, updateSlot } = get();
 
         // Check routers
         if (routers.has(nodeId)) {
@@ -423,6 +523,12 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
         // Check folders
         if (folders.has(nodeId)) {
           updateFolder(nodeId, { name: newName });
+          return;
+        }
+
+        // Check slots
+        if (slots.has(nodeId)) {
+          updateSlot(nodeId, { name: newName });
           return;
         }
 
@@ -876,7 +982,72 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
 
       // Helpers
       getTreeData: (): TreeNodeData[] => {
-        const { routers, folders } = get();
+        const { routers, folders, slots, draggingNodeId } = get();
+
+        // Build router children (slots and boards)
+        const buildRouterChildren = (router: RouterNode): TreeNodeData[] => {
+          const children: TreeNodeData[] = [];
+          const routerSlots: SlotNode[] = [];
+
+          // Collect slots for this router
+          for (const slot of slots.values()) {
+            if (slot.routerId === router.id && !slot.isGhost) {
+              routerSlots.push(slot);
+            }
+          }
+
+          // Sort slots by order
+          routerSlots.sort((a, b) => a.order - b.order);
+
+          // Add slots with their boards
+          for (const slot of routerSlots) {
+            const slotBoards = router.boards.filter((b) => b.slotId === slot.slotId);
+            children.push({
+              id: slot.id,
+              name: slot.name,
+              nodeData: slot,
+              children: slotBoards.map((board) => ({
+                id: board.id,
+                name: board.name,
+                nodeData: board,
+              })),
+            });
+          }
+
+          // Add boards directly under router (slotId is null)
+          const directBoards = router.boards.filter((b) => b.slotId === null);
+          for (const board of directBoards) {
+            children.push({
+              id: board.id,
+              name: board.name,
+              nodeData: board,
+            });
+          }
+
+          // Add ghost slot when dragging a board - show under ALL routers for cross-router move
+          if (draggingNodeId) {
+            const draggedBoard = findRouterByBoardId(routers, draggingNodeId);
+            if (draggedBoard) {
+              // Show ghost slot under every router when dragging a board
+              const ghostSlot: SlotNode = {
+                id: `ghost-${router.id}`,
+                type: "slot",
+                routerId: router.id,
+                slotId: "",
+                name: "Drop here to create new slot",
+                order: 9999,
+                isGhost: true,
+              };
+              children.push({
+                id: ghostSlot.id,
+                name: ghostSlot.name,
+                nodeData: ghostSlot,
+              });
+            }
+          }
+
+          return children;
+        };
 
         // Build tree recursively
         const buildChildren = (parentId: string | null): TreeNodeData[] => {
@@ -903,11 +1074,7 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
                 id: router.id,
                 name: router.name,
                 nodeData: router,
-                children: router.boards.map((board) => ({
-                  id: board.id,
-                  name: board.name,
-                  nodeData: board,
-                })),
+                children: buildRouterChildren(router),
               });
             }
           }
@@ -925,8 +1092,8 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
         return buildChildren(null);
       },
 
-      findNodeById: (id: string): RouterNode | LinuxBoardNode | FolderNode | null => {
-        const { routers, folders } = get();
+      findNodeById: (id: string): RouterNode | LinuxBoardNode | FolderNode | SlotNode | null => {
+        const { routers, folders, slots } = get();
 
         // Check folders
         const folder = folders.get(id);
@@ -935,6 +1102,10 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
         // Check routers
         const router = routers.get(id);
         if (router) return router;
+
+        // Check slots
+        const slot = slots.get(id);
+        if (slot) return slot;
 
         // Check boards
         for (const r of routers.values()) {
@@ -950,9 +1121,9 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
         if (!activeNodeId || !activeSessionId) return null;
 
         const node = findNodeById(activeNodeId);
-        if (!node || node.type === "folder") return null;
+        if (!node || node.type === "folder" || node.type === "slot") return null;
 
-        return { node, sessionId: activeSessionId };
+        return { node: node as RouterNode | LinuxBoardNode, sessionId: activeSessionId };
       },
     }),
     {
@@ -975,11 +1146,14 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
         ]),
         // Persist folders
         folders: Array.from(state.folders.entries()),
+        // Persist slots (filter out ghost slots)
+        slots: Array.from(state.slots.entries()).filter(([, slot]) => !slot.isGhost),
       }),
       merge: (persisted, current) => {
         const persistedState = persisted as {
           routers?: [string, RouterNode][];
           folders?: [string, FolderNode][];
+          slots?: [string, SlotNode][];
         };
         const result = { ...current };
 
@@ -996,6 +1170,9 @@ export const useDeviceTreeStore = create<DeviceTreeState>()(
         }
         if (persistedState?.folders) {
           result.folders = new Map(persistedState.folders);
+        }
+        if (persistedState?.slots) {
+          result.slots = new Map(persistedState.slots);
         }
 
         return result;

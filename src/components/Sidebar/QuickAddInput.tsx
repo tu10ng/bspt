@@ -149,8 +149,8 @@ export function QuickAddInput({ onConnect }: QuickAddInputProps) {
       const waitForSession = async (maxAttempts = 10): Promise<string | null> => {
         for (let i = 0; i < maxAttempts; i++) {
           const node = findNodeById(routerId);
-          if (node && node.type !== "folder" && node.sessionId) {
-            return node.sessionId;
+          if (node && node.type !== "folder" && node.type !== "slot" && (node as RouterNode).sessionId) {
+            return (node as RouterNode).sessionId;
           }
           await new Promise((r) => setTimeout(r, 100));
         }
@@ -189,8 +189,8 @@ export function QuickAddInput({ onConnect }: QuickAddInputProps) {
         const waitForSession = async (maxAttempts = 10): Promise<string | null> => {
           for (let i = 0; i < maxAttempts; i++) {
             const node = findNodeById(session.nodeId);
-            if (node && node.type !== "folder" && node.sessionId) {
-              return node.sessionId;
+            if (node && node.type !== "folder" && node.type !== "slot" && (node as RouterNode).sessionId) {
+              return (node as RouterNode).sessionId;
             }
             await new Promise((r) => setTimeout(r, 100));
           }
